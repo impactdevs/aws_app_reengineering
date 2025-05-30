@@ -97,7 +97,7 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final regionId = auth.regionId ?? '1';
-      debugPrint('Loading entries for formId: $_formId, regionId: $regionId, activityType: $_activityType');
+      debugPrint('Loading entries for formId: $_formId, : $regionId, activityType: $_activityType');
       if (_activityType == "Baseline") {
         _committedEntries = await auth.apiService.fetchCommittedBaselineEntries(regionId, _formId!);
       } else {

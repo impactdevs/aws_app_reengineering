@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -12,8 +13,6 @@ import '../providers/auth_provider.dart';
 import '../models/draft_model.dart';
 import '../services/draft_service.dart';
 import 'package:intl/intl.dart';
-
-
 
 class ImagePickerCard extends StatefulWidget {
   final Function(String, XFile) onImagePicked;
@@ -29,7 +28,8 @@ class ImagePickerCard extends StatefulWidget {
   State<ImagePickerCard> createState() => _ImagePickerCardState();
 }
 
-class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingObserver {
+class _ImagePickerCardState extends State<ImagePickerCard>
+    with WidgetsBindingObserver {
   bool _isProcessingImage = false;
   XFile? _image;
   final ImagePicker _picker = ImagePicker();
@@ -65,18 +65,22 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
     }
   }
 
-  Future<XFile?> _pickImage(ImageSource source, {int maxRetries = 2, int retryDelayMs = 500}) async {
+  Future<XFile?> _pickImage(ImageSource source,
+      {int maxRetries = 2, int retryDelayMs = 500}) async {
     if (Platform.isAndroid) {
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
-      debugPrint('Device Info: Model=${androidInfo.model}, Manufacturer=${androidInfo.manufacturer}, SDK=${androidInfo.version.sdkInt}');
-      debugPrint('Available Memory: ${androidInfo.isPhysicalDevice ? "Physical Device" : "Emulator"}');
+      debugPrint(
+          'Device Info: Model=${androidInfo.model}, Manufacturer=${androidInfo.manufacturer}, SDK=${androidInfo.version.sdkInt}');
+      debugPrint(
+          'Available Memory: ${androidInfo.isPhysicalDevice ? "Physical Device" : "Emulator"}');
     }
 
     int attempt = 0;
     while (attempt < maxRetries) {
       try {
-        debugPrint('Attempt ${attempt + 1} to launch ${source == ImageSource.camera ? "camera" : "gallery"}...');
+        debugPrint(
+            'Attempt ${attempt + 1} to launch ${source == ImageSource.camera ? "camera" : "gallery"}...');
         final picked = await _picker.pickImage(
           source: source,
           imageQuality: 30,
@@ -86,9 +90,11 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
         return picked;
       } catch (e) {
         attempt++;
-        debugPrint('${source == ImageSource.camera ? "Camera" : "Gallery"} launch attempt $attempt failed: $e');
+        debugPrint(
+            '${source == ImageSource.camera ? "Camera" : "Gallery"} launch attempt $attempt failed: $e');
         if (attempt >= maxRetries) {
-          throw Exception('Failed to pick image from ${source == ImageSource.camera ? "camera" : "gallery"}: $e');
+          throw Exception(
+              'Failed to pick image from ${source == ImageSource.camera ? "camera" : "gallery"}: $e');
         }
         await Future.delayed(Duration(milliseconds: retryDelayMs));
       }
@@ -123,7 +129,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
                 },
               ),
               ListTile(
-                leading: const Icon(Icons.photo_library, color: Colors.blueAccent),
+                leading:
+                    const Icon(Icons.photo_library, color: Colors.blueAccent),
                 title: Text(
                   'Gallery',
                   style: GoogleFonts.poppins(fontSize: 16),
@@ -161,7 +168,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
       if (cameraStatus.isDenied) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Camera permission is required to take photos.')),
+            const SnackBar(
+                content: Text('Camera permission is required to take photos.')),
           );
         }
         debugPrint('Camera permission denied');
@@ -171,7 +179,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Camera permission is permanently denied. Please enable it in settings.'),
+              content: const Text(
+                  'Camera permission is permanently denied. Please enable it in settings.'),
               action: SnackBarAction(
                 label: 'Settings',
                 onPressed: () {
@@ -190,7 +199,9 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
       if (photosStatus.isDenied) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Photos permission is required to access the gallery.')),
+            const SnackBar(
+                content: Text(
+                    'Photos permission is required to access the gallery.')),
           );
         }
         debugPrint('Photos permission denied');
@@ -200,7 +211,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Photos permission is permanently denied. Please enable it in settings.'),
+              content: const Text(
+                  'Photos permission is permanently denied. Please enable it in settings.'),
               action: SnackBarAction(
                 label: 'Settings',
                 onPressed: () {
@@ -228,7 +240,9 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
       if (storageStatus.isDenied) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Storage permission is required to save photos.')),
+            const SnackBar(
+                content:
+                    Text('Storage permission is required to save photos.')),
           );
         }
         debugPrint('Storage permission denied');
@@ -238,7 +252,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text('Storage permission is permanently denied. Please enable it in settings.'),
+              content: const Text(
+                  'Storage permission is permanently denied. Please enable it in settings.'),
               action: SnackBarAction(
                 label: 'Settings',
                 onPressed: () {
@@ -262,7 +277,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
     try {
       final picked = await _pickImage(source);
 
-      debugPrint('${source == ImageSource.camera ? "Camera" : "Gallery"} activity returned, picked: ${picked != null}');
+      debugPrint(
+          '${source == ImageSource.camera ? "Camera" : "Gallery"} activity returned, picked: ${picked != null}');
       if (picked == null) {
         debugPrint('No image picked');
         if (mounted) {
@@ -310,8 +326,11 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
   }
 
   void _showImagePreview(BuildContext context) {
-    if (_image == null || _appLifecycleState != AppLifecycleState.resumed || !mounted) {
-      debugPrint('Cannot show preview: No image, not resumed, or widget not mounted');
+    if (_image == null ||
+        _appLifecycleState != AppLifecycleState.resumed ||
+        !mounted) {
+      debugPrint(
+          'Cannot show preview: No image, not resumed, or widget not mounted');
       return;
     }
 
@@ -326,7 +345,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(12)),
                 child: Image.file(
                   File(_image!.path),
                   width: double.infinity,
@@ -411,7 +431,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 12, horizontal: 16),
                     ),
                   ),
           ),
@@ -436,7 +457,8 @@ class _ImagePickerCardState extends State<ImagePickerCard> with WidgetsBindingOb
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
                 ),
               ),
             ),
@@ -465,6 +487,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   bool _isPaused = false;
+  Map<String, dynamic> _areaData = {};
 
   @override
   void initState() {
@@ -722,131 +745,147 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     }
   }
 
-Future<void> _submitForm() async {
-  if (!_validateForm()) {
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fill all required fields before submitting.')),
-      );
-    }
-    return;
-  }
-  if (_formData == null) return;
-
-  final auth = Provider.of<AuthProvider>(context, listen: false);
-  final user = auth.user;
-  if (user == null) return;
-
-  setState(() {
-    _isPaused = true;
-  });
-
-  final userId = user['user_id'].toString();
-  final regionCode = auth.regionId ?? 'C';
-  final formId = _formData!['form_id'].toString();
-  final formTitle = _formData!['title'].toString();
-  final subTitle = _answers['qn4']?.toString() ?? 'Default Subtitle';
-  final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
-  final activityType = args?['activity_type'] as String? ?? 'Baseline';
-  final responseId = auth.generateResponseId(regionCode, int.parse(userId));
-
-  try {
-    Map<String, dynamic> submissionAnswers = jsonDecode(jsonEncode(_answers));
-    submissionAnswers['entity_type'] = activityType.toLowerCase() == 'follow-up' ? 'followup' : 'baseline';
-    submissionAnswers['creator_id'] = userId;
-    submissionAnswers['created_at'] = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
-
-    // Set photo as filename, exclude photo_base64 and updated_at from submissionAnswers
-    String? base64Photo;
-    String photoFilename = "null";
-    if (_images.containsKey("photo_base64")) {
-      base64Photo = submissionAnswers['photo_base64'];
-      photoFilename = "image_${DateTime.now().millisecondsSinceEpoch}.jpeg";
-    }
-    submissionAnswers['photo'] = photoFilename;
-    submissionAnswers.remove('photo_base64');
-    submissionAnswers.remove('updated_at'); // Remove updated_at if present
-
-    debugPrint('submissionAnswers in _submitForm after adding fields:');
-    submissionAnswers.forEach((key, value) {
-      debugPrint('$key: $value');
-    });
-
-    final Map<String, dynamic> finalAnswers = Map<String, dynamic>.from(submissionAnswers);
-
-    debugPrint('finalAnswers before API call:');
-    finalAnswers.forEach((key, value) {
-      debugPrint('$key: $value');
-    });
-
-    Map<String, dynamic> response;
-    if (activityType == "Follow-up") {
-      debugPrint('Submitting follow-up with finalAnswers: [logged above]');
-      response = await auth.apiService.commitFollowUp(
-        responseId: responseId,
-        formId: formId,
-        title: finalAnswers['qn65']?.toString() ?? formTitle,
-        subTitle: subTitle,
-        answers: finalAnswers,
-        creatorId: userId,
-      );
+  Future<void> _submitForm() async {
+    if (!_validateForm()) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Follow-up submitted successfully!')),
+          const SnackBar(
+              content:
+                  Text('Please fill all required fields before submitting.')),
         );
       }
-    } else {
-      debugPrint('Submitting baseline with finalAnswers: [logged above]');
-      response = await auth.apiService.commitBaseline(
-        responseId: responseId,
-        formId: formId,
-        title: finalAnswers['qn65']?.toString() ?? formTitle,
-        subTitle: subTitle,
-        answers: finalAnswers,
-        creatorId: userId,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Baseline submitted successfully!')),
+      return;
+    }
+    if (_formData == null) return;
+
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.user;
+    if (user == null) return;
+
+    setState(() {
+      _isPaused = true;
+    });
+
+    final userId = user['user_id'].toString();
+    final regionCode = auth.regionId ?? 'C';
+    final formId = _formData!['form_id'].toString();
+    final formTitle = _formData!['title'].toString();
+    final subTitle = _answers['qn4']?.toString() ?? 'Default Subtitle';
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final activityType = args?['activity_type'] as String? ?? 'Baseline';
+    final responseId = auth.generateResponseId(regionCode, int.parse(userId));
+
+    //update the responses for the keys that are in _areadData
+    if (_areaData.isNotEmpty) {
+      _areaData.forEach((key, value) {
+        if (_answers.containsKey(key)) {
+          _answers[key] = value;
+        } 
+      });
+    }                  
+
+    try {
+      Map<String, dynamic> submissionAnswers = jsonDecode(jsonEncode(_answers));
+      submissionAnswers['entity_type'] =
+          activityType.toLowerCase() == 'follow-up' ? 'followup' : 'baseline';
+      submissionAnswers['creator_id'] = userId;
+      submissionAnswers['created_at'] =
+          DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      // Set photo as filename, exclude photo_base64 and updated_at from submissionAnswers
+      String? base64Photo;
+      String photoFilename = "null";
+      if (_images.containsKey("photo_base64")) {
+        base64Photo = submissionAnswers['photo_base64'];
+        photoFilename = "image_${DateTime.now().millisecondsSinceEpoch}.jpeg";
+      }
+      submissionAnswers['photo'] = photoFilename;
+      submissionAnswers.remove('photo_base64');
+      submissionAnswers.remove('updated_at'); // Remove updated_at if present
+
+      debugPrint('submissionAnswers in _submitForm after adding fields:');
+      submissionAnswers.forEach((key, value) {
+        debugPrint('$key: $value');
+      });
+
+      final Map<String, dynamic> finalAnswers =
+          Map<String, dynamic>.from(submissionAnswers);
+
+      debugPrint('finalAnswers before API call:');
+      finalAnswers.forEach((key, value) {
+        debugPrint('$key: $value');
+      });
+
+      Map<String, dynamic> response;
+      if (activityType == "Follow-up") {
+        debugPrint('Submitting follow-up with finalAnswers: [logged above]');
+        response = await auth.apiService.commitFollowUp(
+          responseId: responseId,
+          formId: formId,
+          title: finalAnswers['qn65']?.toString() ?? formTitle,
+          subTitle: subTitle,
+          answers: finalAnswers,
+          creatorId: userId,
         );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Follow-up submitted successfully!')),
+          );
+        }
+      } else {
+        debugPrint('Submitting baseline with finalAnswers: [logged above]');
+        response = await auth.apiService.commitBaseline(
+          responseId: responseId,
+          formId: formId,
+          title: finalAnswers['qn65']?.toString() ?? formTitle,
+          subTitle: subTitle,
+          answers: finalAnswers,
+          creatorId: userId,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Baseline submitted successfully!')),
+          );
+        }
+
+        if (_formData!['is_photograph'] == "1" && base64Photo != null) {
+          Future.delayed(const Duration(minutes: 5), () async {
+            try {
+              await auth.apiService.commitPhoto(
+                responseId: responseId,
+                base64Data: base64Photo!,
+                filename: photoFilename,
+                creatorId: int.parse(userId),
+              );
+              debugPrint(
+                  'Photo committed successfully after 5-minute delay for responseId: $responseId');
+            } catch (e) {
+              debugPrint('Error committing photo after delay: $e');
+            }
+          });
+        }
       }
 
-      if (_formData!['is_photograph'] == "1" && base64Photo != null) {
-        Future.delayed(const Duration(minutes: 5), () async {
-          try {
-            await auth.apiService.commitPhoto(
-              responseId: responseId,
-              base64Data: base64Photo!,
-              filename: photoFilename,
-              creatorId: int.parse(userId),
-            );
-            debugPrint('Photo committed successfully after 5-minute delay for responseId: $responseId');
-          } catch (e) {
-            debugPrint('Error committing photo after delay: $e');
-          }
+      await _draftService.updateDraftStatus(formId, activityType, 'submitted');
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    } catch (e) {
+      debugPrint('Error submitting form: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error submitting form: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isPaused = false;
         });
       }
     }
-
-    await _draftService.updateDraftStatus(formId, activityType, 'submitted');
-    if (mounted) {
-      Navigator.of(context).pop();
-    }
-  } catch (e) {
-    debugPrint('Error submitting form: $e');
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error submitting form: $e')),
-      );
-    }
-  } finally {
-    if (mounted) {
-      setState(() {
-        _isPaused = false;
-      });
-    }
   }
-}
 
   TextEditingController _getController(String key, String initialValue) {
     if (_isPaused) {
@@ -1141,6 +1180,10 @@ Future<void> _submitForm() async {
     );
   }
 
+  void updateAnswers($key, $value) {
+    _answers[$key] = $value;
+  }
+
   Widget _buildAppListDropdown(String key, String label, dynamic answerValues,
       {String? filterBy, String? parentValue}) {
     final dbTable = answerValues?['db_table']?.toString() ?? '';
@@ -1345,6 +1388,24 @@ Future<void> _submitForm() async {
                         if (q['answer_type'] == 'app_list' &&
                             q['answer_values']['db_table'] == 'app_district') {
                           parentValue = _answers["qn${q['question_id']}"];
+                          var items =
+                              Provider.of<AuthProvider>(context, listen: false)
+                                      .userRegionData?['app_district'] ??
+                                  [];
+
+                          if (items.isNotEmpty) {
+                            final item = items.firstWhere(
+                              (item) =>
+                                  item[filterByField]?.toString() ==
+                                  parentValue,
+                              orElse: () => {},
+                            );
+                            if (item.isNotEmpty) {
+                              _areaData["qn${q['question_id']}"] =
+                                  item['name']?.toString() ?? '';
+                              debugPrint("Area Data: $_areaData");
+                            }
+                          }
                           break;
                         }
                       }
@@ -1356,6 +1417,25 @@ Future<void> _submitForm() async {
                             q['answer_values']['db_table'] ==
                                 'app_sub_county') {
                           parentValue = _answers["qn${q['question_id']}"];
+
+                          var items =
+                              Provider.of<AuthProvider>(context, listen: false)
+                                      .userRegionData?['app_sub_county'] ??
+                                  [];
+
+                          if (items.isNotEmpty) {
+                            final item = items.firstWhere(
+                              (item) =>
+                                  item[filterByField]?.toString() ==
+                                  parentValue,
+                              orElse: () => {},
+                            );
+                            if (item.isNotEmpty) {
+                              _areaData["qn${q['question_id']}"] =
+                                  item['name']?.toString() ?? '';
+                              debugPrint("Area Data: $_areaData");
+                            }
+                          }
                           break;
                         }
                       }
@@ -1366,6 +1446,25 @@ Future<void> _submitForm() async {
                         if (q['answer_type'] == 'app_list' &&
                             q['answer_values']['db_table'] == 'app_parish') {
                           parentValue = _answers["qn${q['question_id']}"];
+
+                          var items =
+                              Provider.of<AuthProvider>(context, listen: false)
+                                      .userRegionData?['app_parish'] ??
+                                  [];
+
+                          if (items.isNotEmpty) {
+                            final item = items.firstWhere(
+                              (item) =>
+                                  item[filterByField]?.toString() ==
+                                  parentValue,
+                              orElse: () => {},
+                            );
+                            if (item.isNotEmpty) {
+                              _areaData["qn${q['question_id']}"] =
+                                  item['name']?.toString() ?? '';
+                              debugPrint("Area Data: $_areaData");
+                            }
+                          }
                           break;
                         }
                       }

@@ -1,13 +1,11 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
-import 'package:path_provider/path_provider.dart';
 
 class ApiService {
-  final String baseUrl = 'https://dev.impact-outsourcing.com/aws.api/public';
-  final Dio _dio = Dio(BaseOptions(baseUrl: 'https://dev.impact-outsourcing.com/aws.api/public'));
+  final String baseUrl = 'http://192.168.1.12:8080/';
+  final Dio _dio = Dio(BaseOptions(baseUrl: 'http://192.168.1.12:8080/'));
 
   Future<Map<String, dynamic>> login(String username, String password) async {
     try {
@@ -129,6 +127,7 @@ Future<Map<String, dynamic>> commitBaseline({
       'title': title,
       'sub_title': subTitle,
       'responses': responsesJson,
+      'created_at': submissionAnswers['created_at'] ?? DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now())
     });
 
     debugPrint('FormData fields:');
