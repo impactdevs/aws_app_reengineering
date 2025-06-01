@@ -5,468 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
-import 'package:permission_handler/permission_handler.dart';
-import 'package:flutter/foundation.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import '../providers/auth_provider.dart';
 import '../models/draft_model.dart';
 import '../services/draft_service.dart';
 import 'package:intl/intl.dart';
-
-class ImagePickerCard extends StatefulWidget {
-  final Function(String, XFile) onImagePicked;
-  final bool isPaused; // Controls whether image picking updates state
-
-  const ImagePickerCard({
-    super.key,
-    required this.onImagePicked,
-    required this.isPaused,
-  });
-
-  @override
-  State<ImagePickerCard> createState() => _ImagePickerCardState();
-}
-
-class _ImagePickerCardState extends State<ImagePickerCard>
-    with WidgetsBindingObserver {
-  bool _isProcessingImage = false;
-  XFile? _image;
-  final ImagePicker _picker = ImagePicker();
-  AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    super.dispose();
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    setState(() {
-      _appLifecycleState = state;
-    });
-    debugPrint('ImagePickerCard AppLifecycleState changed to: $state');
-  }
-
-  static Future<Map<String, dynamic>> _processImage(String path) async {
-    try {
-      final bytes = await File(path).readAsBytes();
-      final base64Image = "data:image/jpeg;base64,${base64Encode(bytes)}";
-      return {'path': path, 'base64Image': base64Image};
-    } catch (e) {
-      return {'error': 'Error processing image: $e'};
-    }
-  }
-
-  Future<XFile?> _pickImage(ImageSource source,
-      {int maxRetries = 2, int retryDelayMs = 500}) async {
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      debugPrint(
-          'Device Info: Model=${androidInfo.model}, Manufacturer=${androidInfo.manufacturer}, SDK=${androidInfo.version.sdkInt}');
-      debugPrint(
-          'Available Memory: ${androidInfo.isPhysicalDevice ? "Physical Device" : "Emulator"}');
-    }
-
-    int attempt = 0;
-    while (attempt < maxRetries) {
-      try {
-        debugPrint(
-            'Attempt ${attempt + 1} to launch ${source == ImageSource.camera ? "camera" : "gallery"}...');
-        final picked = await _picker.pickImage(
-          source: source,
-          imageQuality: 30,
-          maxWidth: 800,
-          maxHeight: 800,
-        );
-        return picked;
-      } catch (e) {
-        attempt++;
-        debugPrint(
-            '${source == ImageSource.camera ? "Camera" : "Gallery"} launch attempt $attempt failed: $e');
-        if (attempt >= maxRetries) {
-          throw Exception(
-              'Failed to pick image from ${source == ImageSource.camera ? "camera" : "gallery"}: $e');
-        }
-        await Future.delayed(Duration(milliseconds: retryDelayMs));
-      }
-    }
-    return null;
-  }
-
-  void _showImageSourceDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text(
-            'Select Image Source',
-            style: GoogleFonts.poppins(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.camera_alt, color: Colors.blueAccent),
-                title: Text(
-                  'Camera',
-                  style: GoogleFonts.poppins(fontSize: 16),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleImagePick(ImageSource.camera);
-                },
-              ),
-              ListTile(
-                leading:
-                    const Icon(Icons.photo_library, color: Colors.blueAccent),
-                title: Text(
-                  'Gallery',
-                  style: GoogleFonts.poppins(fontSize: 16),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _handleImagePick(ImageSource.gallery);
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-              },
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  color: Colors.grey,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Future<void> _handleImagePick(ImageSource source) async {
-    // Request permissions based on the source
-    if (source == ImageSource.camera) {
-      final cameraStatus = await Permission.camera.request();
-      if (cameraStatus.isDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text('Camera permission is required to take photos.')),
-          );
-        }
-        debugPrint('Camera permission denied');
-        return;
-      }
-      if (cameraStatus.isPermanentlyDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                  'Camera permission is permanently denied. Please enable it in settings.'),
-              action: SnackBarAction(
-                label: 'Settings',
-                onPressed: () {
-                  openAppSettings();
-                },
-              ),
-            ),
-          );
-        }
-        debugPrint('Camera permission permanently denied');
-        return;
-      }
-    } else {
-      // For gallery, request photos permission on Android 13+
-      final photosStatus = await Permission.photos.request();
-      if (photosStatus.isDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content: Text(
-                    'Photos permission is required to access the gallery.')),
-          );
-        }
-        debugPrint('Photos permission denied');
-        return;
-      }
-      if (photosStatus.isPermanentlyDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                  'Photos permission is permanently denied. Please enable it in settings.'),
-              action: SnackBarAction(
-                label: 'Settings',
-                onPressed: () {
-                  openAppSettings();
-                },
-              ),
-            ),
-          );
-        }
-        debugPrint('Photos permission permanently denied');
-        return;
-      }
-    }
-
-    bool storagePermissionRequired = false;
-    if (Platform.isAndroid) {
-      final deviceInfo = DeviceInfoPlugin();
-      final androidInfo = await deviceInfo.androidInfo;
-      final sdkVersion = androidInfo.version.sdkInt ?? 0;
-      storagePermissionRequired = sdkVersion <= 29;
-    }
-
-    if (storagePermissionRequired) {
-      final storageStatus = await Permission.storage.request();
-      if (storageStatus.isDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-                content:
-                    Text('Storage permission is required to save photos.')),
-          );
-        }
-        debugPrint('Storage permission denied');
-        return;
-      }
-      if (storageStatus.isPermanentlyDenied) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text(
-                  'Storage permission is permanently denied. Please enable it in settings.'),
-              action: SnackBarAction(
-                label: 'Settings',
-                onPressed: () {
-                  openAppSettings();
-                },
-              ),
-            ),
-          );
-        }
-        debugPrint('Storage permission permanently denied');
-        return;
-      }
-    } else {
-      debugPrint('Storage permission not required (Android 11 or higher)');
-    }
-
-    setState(() {
-      _isProcessingImage = true;
-    });
-
-    try {
-      final picked = await _pickImage(source);
-
-      debugPrint(
-          '${source == ImageSource.camera ? "Camera" : "Gallery"} activity returned, picked: ${picked != null}');
-      if (picked == null) {
-        debugPrint('No image picked');
-        if (mounted) {
-          setState(() {
-            _isProcessingImage = false;
-          });
-        }
-        return;
-      }
-
-      debugPrint('Image picked, path: ${picked.path}');
-
-      final result = await compute(_processImage, picked.path);
-
-      debugPrint('Image processing result: $result');
-      if (result.containsKey('error')) {
-        throw Exception(result['error']);
-      }
-
-      final base64Image = result['base64Image'];
-
-      await Future.delayed(const Duration(milliseconds: 1000));
-
-      if (mounted && !widget.isPaused) {
-        setState(() {
-          _image = picked;
-          _isProcessingImage = false;
-        });
-        widget.onImagePicked(base64Image, picked);
-        debugPrint('Image processed and state updated');
-      } else {
-        debugPrint('Activity not mounted or paused, skipping state update');
-      }
-    } catch (e) {
-      debugPrint('Error during image capture: $e');
-      if (mounted) {
-        setState(() {
-          _isProcessingImage = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error picking image: $e')),
-        );
-      }
-    }
-  }
-
-  void _showImagePreview(BuildContext context) {
-    if (_image == null ||
-        _appLifecycleState != AppLifecycleState.resumed ||
-        !mounted) {
-      debugPrint(
-          'Cannot show preview: No image, not resumed, or widget not mounted');
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ClipRRect(
-                borderRadius:
-                    const BorderRadius.vertical(top: Radius.circular(12)),
-                child: Image.file(
-                  File(_image!.path),
-                  width: double.infinity,
-                  height: 300,
-                  fit: BoxFit.cover,
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: [
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                      },
-                      child: Text(
-                        'Close',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          color: Colors.blueAccent,
-                        ),
-                      ),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        setState(() {
-                          _image = null;
-                        });
-                      },
-                      child: Text(
-                        'Retake',
-                        style: GoogleFonts.poppins(
-                          fontSize: 16,
-                          color: Colors.redAccent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      margin: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        children: [
-          ListTile(
-            leading: const Icon(Icons.camera_alt, color: Colors.blueAccent),
-            title: Text(
-              "Capture Photo",
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: _isProcessingImage
-                ? const CircularProgressIndicator(color: Colors.blueAccent)
-                : ElevatedButton.icon(
-                    onPressed: widget.isPaused ? null : _showImageSourceDialog,
-                    icon: const Icon(Icons.image, color: Colors.white),
-                    label: Text(
-                      "Pick Image",
-                      style: GoogleFonts.poppins(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white,
-                      ),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blueAccent,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(
-                          vertical: 12, horizontal: 16),
-                    ),
-                  ),
-          ),
-          if (_image != null && !_isProcessingImage)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  _showImagePreview(context);
-                },
-                icon: const Icon(Icons.preview, color: Colors.white),
-                label: Text(
-                  "Preview Photo",
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.white,
-                  ),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding:
-                      const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-                ),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
+import 'package:geolocator/geolocator.dart';
 
 class DynamicFormPage extends StatefulWidget {
   const DynamicFormPage({super.key});
@@ -488,6 +32,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   late Animation<double> _fadeAnimation;
   bool _isPaused = false;
   Map<String, dynamic> _areaData = {};
+  final PageStorageKey _scrollKey = PageStorageKey('formScrollKey');
 
   @override
   void initState() {
@@ -781,9 +326,9 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       _areaData.forEach((key, value) {
         if (_answers.containsKey(key)) {
           _answers[key] = value;
-        } 
+        }
       });
-    }                  
+    }
 
     try {
       Map<String, dynamic> submissionAnswers = jsonDecode(jsonEncode(_answers));
@@ -806,7 +351,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
 
       debugPrint('submissionAnswers in _submitForm after adding fields:');
       submissionAnswers.forEach((key, value) {
-        debugPrint('$key: $value');
+        log('$key: $value');
       });
 
       final Map<String, dynamic> finalAnswers =
@@ -850,20 +395,18 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         }
 
         if (_formData!['is_photograph'] == "1" && base64Photo != null) {
-          Future.delayed(const Duration(minutes: 5), () async {
-            try {
-              await auth.apiService.commitPhoto(
-                responseId: responseId,
-                base64Data: base64Photo!,
-                filename: photoFilename,
-                creatorId: int.parse(userId),
-              );
-              debugPrint(
-                  'Photo committed successfully after 5-minute delay for responseId: $responseId');
-            } catch (e) {
-              debugPrint('Error committing photo after delay: $e');
-            }
-          });
+          try {
+            await auth.apiService.commitPhoto(
+              responseId: responseId,
+              base64Data: base64Photo,
+              filename: photoFilename,
+              creatorId: int.parse(userId),
+            );
+            debugPrint(
+                'Photo committed successfully after 5-minute delay for responseId: $responseId');
+          } catch (e) {
+            debugPrint('Error committing photo after delay: $e');
+          }
         }
       }
 
@@ -907,14 +450,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
@@ -956,14 +491,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         TextField(
           keyboardType: TextInputType.number,
@@ -1004,14 +531,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         ...optionsList.map((opt) {
           return RadioListTile<String>(
@@ -1042,14 +561,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         ...optionsList.map((opt) {
           return CheckboxListTile(
@@ -1083,14 +594,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         InkWell(
           onTap: _isPaused
@@ -1249,14 +752,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: GoogleFonts.poppins(
-            fontWeight: FontWeight.w600,
-            fontSize: 16,
-            color: Colors.black87,
-          ),
-        ),
         const SizedBox(height: 8),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -1311,27 +806,149 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         ),
         onTap: _isPaused
             ? null
-            : () {
+            : () async {
+                bool serviceEnabled;
+                LocationPermission permission;
+
+                serviceEnabled = await Geolocator.isLocationServiceEnabled();
+                if (!serviceEnabled) {
+                  // Location services are not enabled
+                  return;
+                }
+
+                permission = await Geolocator.checkPermission();
+                if (permission == LocationPermission.denied) {
+                  permission = await Geolocator.requestPermission();
+                  if (permission == LocationPermission.denied) {
+                    return;
+                  }
+                }
+
+                if (permission == LocationPermission.deniedForever) {
+                  // Permissions are denied forever
+                  return;
+                }
+
+                final position = await Geolocator.getCurrentPosition(
+                  desiredAccuracy: LocationAccuracy.high,
+                );
+
                 setState(() {
-                  _answers["coordinates"] = "0.3554125,32.6164299";
+                  _answers["coordinates"] =
+                      "${position.latitude},${position.longitude}";
                 });
               },
       ),
     );
   }
 
-// In DynamicFormPage
   Widget _buildImagePicker() {
-    return ImagePickerCard(
-      onImagePicked: (base64Image, picked) {
-        if (!_isPaused) {
-          setState(() {
-            _images["photo_base64"] = picked;
-            _answers["photo_base64"] = base64Image;
-          });
-        }
-      },
-      isPaused: _isPaused,
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      child: Column(
+        children: [
+          // Conditionally display the image preview at the top
+          if (_images.containsKey("photo_base64"))
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8.0),
+                child: Image.file(
+                  File(_images["photo_base64"]!.path),
+                  fit: BoxFit.cover,
+                  height: 200,
+                  width: double.infinity,
+                ),
+              ),
+            ),
+          ListTile(
+            leading: Icon(
+              _images.containsKey("photo_base64")
+                  ? Icons.edit
+                  : Icons.photo_camera,
+              color: Colors.blueAccent,
+            ),
+            title: Text(
+              _images.containsKey("photo_base64")
+                  ? "Retake or Pick Photo"
+                  : "Capture or Pick Photo",
+              style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+            ),
+            subtitle: Text(
+              _images.containsKey("photo_base64")
+                  ? "Tap to retake or pick a new photo"
+                  : "No photo captured yet. Tap to add one.",
+              style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey[600]),
+            ),
+            onTap: _isPaused
+                ? null
+                : () async {
+                    showModalBottomSheet(
+                      context: context,
+                      shape: const RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.vertical(top: Radius.circular(16)),
+                      ),
+                      builder: (context) {
+                        return SafeArea(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              ListTile(
+                                leading: const Icon(Icons.camera_alt,
+                                    color: Colors.blueAccent),
+                                title: const Text('Take Photo'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  final ImagePicker picker = ImagePicker();
+                                  final XFile? image = await picker.pickImage(
+                                    source: ImageSource.camera,
+                                    maxWidth: 800,
+                                    maxHeight: 800,
+                                  );
+                                  if (image != null) {
+                                    setState(() {
+                                      _images["photo_base64"] = image;
+                                      _answers["photo_base64"] = base64Encode(
+                                        File(image.path).readAsBytesSync(),
+                                      );
+                                    });
+                                  }
+                                },
+                              ),
+                              ListTile(
+                                leading: const Icon(Icons.photo_library,
+                                    color: Colors.blueAccent),
+                                title: const Text('Pick from Gallery'),
+                                onTap: () async {
+                                  Navigator.pop(context);
+                                  final ImagePicker picker = ImagePicker();
+                                  final XFile? image = await picker.pickImage(
+                                    source: ImageSource.gallery,
+                                    maxWidth: 800,
+                                    maxHeight: 800,
+                                  );
+                                  if (image != null) {
+                                    setState(() {
+                                      _images["photo_base64"] = image;
+                                      _answers["photo_base64"] = base64Encode(
+                                        File(image.path).readAsBytesSync(),
+                                      );
+                                    });
+                                  }
+                                },
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    );
+                  },
+          ),
+        ],
+      ),
     );
   }
 
@@ -1590,6 +1207,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
           : FadeTransition(
               opacity: _fadeAnimation,
               child: SingleChildScrollView(
+                key: _scrollKey,
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: formWidgets,
