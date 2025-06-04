@@ -27,7 +27,8 @@ class _DraftsPageState extends State<DraftsPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     if (args != null) {
       _formId = args['form_id']?.toString();
       _activityType = args['activity_type']?.toString() ?? 'Baseline';
@@ -116,7 +117,8 @@ class _DraftsPageState extends State<DraftsPage> {
                                   ),
                                 );
                                 if (confirm == true) {
-                                  await _deleteDraft(draft.formId, _activityType!);
+                                  await _deleteDraft(
+                                      draft.formId, _activityType!);
                                 }
                               },
                             ),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:aws_app/services/offline_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
@@ -22,7 +23,8 @@ class AuthProvider extends ChangeNotifier {
   List<dynamic> get projects => _projects;
   List<dynamic> get organisations => _organisations;
   ApiService get apiService => _apiService;
-  String? get regionId => _userRegionData?['region']?.first['region_id']?.toString();
+  String? get regionId =>
+      _userRegionData?['region']?.first['region_id']?.toString();
 
   Future<void> _persistUser(Map<String, dynamic> user) async {
     final prefs = await SharedPreferences.getInstance();
@@ -55,7 +57,8 @@ class AuthProvider extends ChangeNotifier {
       final response = await _apiService.login(username, password);
       if (response['status'] == 200) {
         _user = response['data'] as Map<String, dynamic>;
-        _regionId = _user?['region_id']?.toString(); // Store region_id from login response
+        _regionId = _user?['region_id']
+            ?.toString(); // Store region_id from login response
         await _persistUser(_user!);
       } else {
         throw Exception('Invalid login response: ${response['status']}');
@@ -74,6 +77,8 @@ class AuthProvider extends ChangeNotifier {
     _forms = [];
     _userRegionData = null;
     await clearUser();
+    //clear all hive data
+    await OfflineStorageService().clearAllData();
     notifyListeners();
   }
 

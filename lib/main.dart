@@ -1,4 +1,5 @@
 // main.dart
+import 'services/offline_service.dart';
 import 'package:flutter/material.dart';
 import 'screens/home_page.dart';
 import 'screens/activity_page.dart';
@@ -13,9 +14,11 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final authProvider = AuthProvider();
   final draftService = DraftService();
+  final offlineStorage = OfflineStorageService();
   await Future.wait([
     authProvider.loadUser(),
     draftService.init(),
+    offlineStorage.init(),
   ]);
   runApp(
     MultiProvider(

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -15,7 +14,8 @@ class DetailsPage extends StatefulWidget {
   State<DetailsPage> createState() => _DetailsPageState();
 }
 
-class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin {
+class _DetailsPageState extends State<DetailsPage>
+    with TickerProviderStateMixin {
   TabController? _tabController;
   late DraftService _draftService;
   List<DraftModel> _drafts = [];
@@ -26,7 +26,8 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
   String? _formTitle;
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
-  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey = GlobalKey<RefreshIndicatorState>();
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+      GlobalKey<RefreshIndicatorState>();
 
   @override
   void initState() {
@@ -45,7 +46,8 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
 
     // Initialize TabController with a default length
     _tabController = TabController(
-      length: 2, // Default length; will update in didChangeDependencies if needed
+      length:
+          2, // Default length; will update in didChangeDependencies if needed
       vsync: this,
     );
   }
@@ -53,7 +55,8 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final args = ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+    final args =
+        ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final newActivityType = args?['activity_type']?.toString() ?? 'Baseline';
     _formId = args?['form_id']?.toString();
     _formTitle = args?['form_title']?.toString() ?? 'Untitled';
@@ -61,7 +64,7 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
     // Only update TabController length if activityType has changed
     if (_activityType != newActivityType) {
       _activityType = newActivityType;
-      final newLength = _activityType == "Follow-up" ? 1 : 2;
+      final newLength = _activityType == "Follow-up" ? 3 : 2;
       _tabController?.dispose();
       _tabController = TabController(
         length: newLength,
@@ -84,9 +87,11 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
   }
 
   void _loadDrafts() {
-    if (_formId != null && _activityType != null && _activityType == "Baseline") {
+    if (_formId != null &&
+        _activityType != null) {
       setState(() {
-        _drafts = _draftService.getDraftsByStatus(_formId!, _activityType!, 'draft');
+        _drafts =
+            _draftService.getDraftsByStatus(_formId!, _activityType!, 'draft');
       });
     }
   }
@@ -97,11 +102,14 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final regionId = auth.regionId ?? '1';
-      debugPrint('Loading entries for formId: $_formId, : $regionId, activityType: $_activityType');
+      debugPrint(
+          'Loading entries for formId: $_formId, : $regionId, activityType: $_activityType');
       if (_activityType == "Baseline") {
-        _committedEntries = await auth.apiService.fetchCommittedBaselineEntries(regionId, _formId!);
+        _committedEntries = await auth.apiService
+            .fetchCommittedBaselineEntries(regionId, _formId!);
       } else {
-        _committedEntries = await auth.apiService.fetchFollowUpEntries(regionId, _formId!);
+        _committedEntries =
+            await auth.apiService.fetchFollowUpEntries(regionId, _formId!);
       }
     } catch (e) {
       if (mounted) {
@@ -163,7 +171,8 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
   }
 
   Widget _buildDraftTile(DraftModel draft) {
-    final formattedDate = DateFormat('MMM d, yyyy h:mm a').format(draft.timestamp);
+    final formattedDate =
+        DateFormat('MMM d, yyyy h:mm a').format(draft.timestamp);
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -229,7 +238,8 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
                       TextButton(
                         onPressed: () {
                           if (_formId != null && _activityType != null) {
-                            _draftService.deleteDraft(draft.formId, _activityType!, draft.timestamp);
+                            _draftService.deleteDraft(
+                                draft.formId, _activityType!, draft.timestamp);
                             Navigator.pop(context);
                             _loadDrafts();
                           }
@@ -251,10 +261,9 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
   }
 
   Widget _buildCommittedTile(Map<String, dynamic> entry) {
-    final responses = entry['responses'] is String ? jsonDecode(entry['responses']) : entry['responses'];
-    final title = entry['title']?.toString() ?? responses?['qn65']?.toString() ?? 'Untitled';
-    final createdAt = entry['created_at']?.toString() ?? responses?['qn3']?.toString() ?? 'Unknown';
-    const status = 'Committed';
+    final title = entry['title']?.toString() ?? "N/A";
+    final subTitle = entry['sub_title']?.toString() ?? "N/A";
+    final parish = entry['parish']?.toString() ?? "N/A";
     return Card(
       elevation: 4,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -269,7 +278,7 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
           ),
         ),
         subtitle: Text(
-          'Created: $createdAt\nStatus: $status',
+          '$subTitle\n$parish',
           style: GoogleFonts.poppins(
             color: Colors.grey[600],
             fontSize: 14,
@@ -317,7 +326,31 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
           onPressed: () => Navigator.pop(context),
         ),
         bottom: _activityType == "Follow-up"
-            ? null
+            ? PreferredSize(
+                preferredSize: const Size.fromHeight(48),
+                child: Container(
+                  color: Colors.white,
+                  child: TabBar(
+                    controller: _tabController,
+                    labelStyle: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                    unselectedLabelStyle: GoogleFonts.poppins(
+                      fontWeight: FontWeight.w400,
+                      fontSize: 12,
+                    ),
+                    labelColor: const Color.fromARGB(255, 87, 92, 100),
+                    unselectedLabelColor: Colors.grey,
+                    indicatorColor: Colors.blueAccent,
+                    tabs: const [
+                      Tab(text: 'NEW'),
+                      Tab(text: 'DRAFTS'),
+                      Tab(text: 'COMMITTED'),
+                    ],
+                  ),
+                ),
+              )
             : PreferredSize(
                 preferredSize: const Size.fromHeight(48),
                 child: Container(
@@ -351,29 +384,32 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
         },
         color: Colors.blueAccent,
         child: _activityType == "Follow-up"
-            ? _isLoadingEntries
-                ? _buildShimmerEffect()
-                : _committedEntries.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No available follow-up forms',
-                          style: GoogleFonts.poppins(
-                            fontSize: 18,
-                            color: Colors.grey[600],
-                          ),
-                        ),
-                      )
-                    : FadeTransition(
-                        opacity: _fadeAnimation,
-                        child: ListView(
-                          children: _committedEntries
-                              .map<Widget>((entry) => _buildCommittedTile(entry))
-                              .toList(),
-                        ),
-                      )
-            : TabBarView(
+            ?
+            //build new tab
+            TabBarView(
                 controller: _tabController,
                 children: [
+                  _isLoadingEntries
+                      ? _buildShimmerEffect()
+                      : _committedEntries.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No New Entries',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            )
+                          : FadeTransition(
+                              opacity: _fadeAnimation,
+                              child: ListView(
+                                children: _committedEntries
+                                    .map<Widget>(
+                                        (entry) => _buildCommittedTile(entry))
+                                    .toList(),
+                              ),
+                            ),
                   _drafts.isEmpty
                       ? Center(
                           child: Text(
@@ -387,7 +423,9 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
                       : FadeTransition(
                           opacity: _fadeAnimation,
                           child: ListView(
-                            children: _drafts.map<Widget>((draft) => _buildDraftTile(draft)).toList(),
+                            children: _drafts
+                                .map<Widget>((draft) => _buildDraftTile(draft))
+                                .toList(),
                           ),
                         ),
                   _isLoadingEntries
@@ -406,7 +444,52 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
                               opacity: _fadeAnimation,
                               child: ListView(
                                 children: _committedEntries
-                                    .map<Widget>((entry) => _buildCommittedTile(entry))
+                                    .map<Widget>(
+                                        (entry) => _buildCommittedTile(entry))
+                                    .toList(),
+                              ),
+                            ),
+                ],
+              )
+            : TabBarView(
+                controller: _tabController,
+                children: [
+                  _drafts.isEmpty
+                      ? Center(
+                          child: Text(
+                            'No Drafts Available',
+                            style: GoogleFonts.poppins(
+                              fontSize: 18,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                        )
+                      : FadeTransition(
+                          opacity: _fadeAnimation,
+                          child: ListView(
+                            children: _drafts
+                                .map<Widget>((draft) => _buildDraftTile(draft))
+                                .toList(),
+                          ),
+                        ),
+                  _isLoadingEntries
+                      ? _buildShimmerEffect()
+                      : _committedEntries.isEmpty
+                          ? Center(
+                              child: Text(
+                                'No committed entries',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 18,
+                                  color: Colors.grey[600],
+                                ),
+                              ),
+                            )
+                          : FadeTransition(
+                              opacity: _fadeAnimation,
+                              child: ListView(
+                                children: _committedEntries
+                                    .map<Widget>(
+                                        (entry) => _buildCommittedTile(entry))
                                     .toList(),
                               ),
                             ),
@@ -433,7 +516,25 @@ class _DetailsPageState extends State<DetailsPage> with TickerProviderStateMixin
                 });
               },
             )
-          : null,
+          : FloatingActionButton(
+              tooltip: 'Follow Up',
+              backgroundColor: Colors.blueAccent,
+              child: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () async {
+                // fetch follow up entries
+                final auth = Provider.of<AuthProvider>(context, listen: false);
+                final regionId = auth.regionId ?? '1';
+                await auth.apiService
+                    .fetchFollowUpEntriesFromApi(regionId, _formId!);
+
+                // Reload committed entries after fetching follow-up data
+                setState(() {
+                  _isLoadingEntries = true;
+                  _loadEntries().then((_) {
+                    _isLoadingEntries = false;
+                  });
+                });
+              }),
     );
   }
 }

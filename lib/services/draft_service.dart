@@ -1,3 +1,5 @@
+import 'dart:developer';
+
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/draft_model.dart';
 
@@ -11,32 +13,38 @@ class DraftService {
     _draftsBox = await Hive.openBox<DraftModel>(_boxName);
   }
 
-  String _createDraftKey(String formId, String activityType, DateTime timestamp) {
+  String _createDraftKey(
+      String formId, String activityType, DateTime timestamp) {
     return "$formId:$activityType:${timestamp.millisecondsSinceEpoch}";
   }
 
   Future<void> saveDraft(DraftModel draft, String activityType) async {
-    final draftKey = _createDraftKey(draft.formId, activityType, draft.timestamp);
+    final draftKey =
+        _createDraftKey(draft.formId, activityType, draft.timestamp);
     await _draftsBox.put(draftKey, draft);
   }
 
   Future<void> updateDraft(DraftModel draft, String activityType) async {
-    final draftKey = _createDraftKey(draft.formId, activityType, draft.timestamp);
+    final draftKey =
+        _createDraftKey(draft.formId, activityType, draft.timestamp);
     await _draftsBox.put(draftKey, draft);
   }
 
-  Future<void> updateDraftStatus(String formId, String activityType, String status) async {
+  Future<void> updateDraftStatus(
+      String formId, String activityType, String status) async {
     final draftsToUpdate = _draftsBox.values
         .where((draft) => draft.formId == formId && draft.status != 'submitted')
         .toList();
     for (var draft in draftsToUpdate) {
-      final draftKey = _createDraftKey(draft.formId, activityType, draft.timestamp);
+      final draftKey =
+          _createDraftKey(draft.formId, activityType, draft.timestamp);
       final updatedDraft = draft.copyWith(status: status);
       await _draftsBox.put(draftKey, updatedDraft);
     }
   }
 
-  Future<void> deleteDraft(String formId, String activityType, DateTime timestamp) async {
+  Future<void> deleteDraft(
+      String formId, String activityType, DateTime timestamp) async {
     final draftKey = _createDraftKey(formId, activityType, timestamp);
     await _draftsBox.delete(draftKey);
   }
@@ -50,10 +58,22 @@ class DraftService {
     return _draftsBox.values.where((draft) => draft.formId == formId).toList();
   }
 
-  List<DraftModel> getDraftsByStatus(String formId, String activityType, String status) {
-    return _draftsBox.values
-        .where((draft) => draft.formId == formId && draft.status == status)
-        .toList();
+  List<DraftModel> getDraftsByStatus(
+      String formId, String activityType, String status) {
+    return _draftsBox.values.where((draft) {
+      final entityType = draft.answers['entity_type'] as String?;
+
+      if (activityType == 'Baseline' && entityType == 'baseline') {
+        log("Checking Baseline Drafts: ${draft.formId}, Status: $status, Entity Type: $entityType");
+        
+        return draft.formId == formId && draft.status == status;
+      } else if (activityType == 'Follow-up' && entityType == 'followup') {
+        log("Checking Follow-up Drafts: ${draft.formId}, Status: $status, Entity Type: $entityType");
+        return draft.formId == formId && draft.status == status;
+      }
+
+      return false;
+    }).toList();
   }
 
   Future<void> clearAllDrafts() async {

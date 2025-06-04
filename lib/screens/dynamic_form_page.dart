@@ -197,9 +197,13 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   }
 
   void _loadFollowUpData(Map<String, dynamic> followUpData) {
-    final responses = followUpData['responses'] is String
+    var responses = followUpData['responses'] is String
         ? jsonDecode(followUpData['responses'])
         : followUpData['responses'];
+    if (responses is List && responses.isNotEmpty) {
+      responses = responses.first;
+    }
+    // log("Loaded follow-up responses: $responses");
     setState(() {
       _answers = Map<String, dynamic>.from(responses);
       _answers.forEach((key, value) {
@@ -219,6 +223,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   Future<void> _loadFormFromMemory(String formId) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final allForms = auth.forms;
+    log("forms: ${allForms.length} loaded from memory");
     final form = allForms.firstWhere(
       (f) => f['form_id'].toString() == formId,
       orElse: () => null,
