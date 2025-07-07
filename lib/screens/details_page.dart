@@ -10,6 +10,52 @@ import 'package:shimmer/shimmer.dart';
 import '../models/draft_model.dart';
 import '../services/draft_service.dart';
 import '../providers/auth_provider.dart';
+import 'dart:convert';
+
+String? getAreaNameFromRegionData({
+  required String
+      areaType, // e.g. 'district', 'sub_county', 'parish', 'village', 'region'
+  required String areaId,
+  required Map<String, dynamic> regionData,
+}) {
+  final areaConfig = {
+    'region': {
+      'listKey': 'region',
+      'idField': 'region_id',
+      'nameField': 'name'
+    },
+    'district': {
+      'listKey': 'app_district',
+      'idField': 'district_id',
+      'nameField': 'name'
+    },
+    'sub_county': {
+      'listKey': 'app_sub_county',
+      'idField': 'sub_county_id',
+      'nameField': 'name'
+    },
+    'parish': {
+      'listKey': 'app_parish',
+      'idField': 'parish_id',
+      'nameField': 'name'
+    },
+    'village': {
+      'listKey': 'app_village',
+      'idField': 'village_id',
+      'nameField': 'name'
+    },
+  };
+  final config = areaConfig[areaType];
+  if (config == null) return null;
+  final list = regionData[config['listKey']] as List<dynamic>?;
+  if (list == null) return null;
+  final match = list.firstWhere(
+    (item) => item[config['idField']]?.toString() == areaId,
+    orElse: () => {},
+  );
+  if (match.isEmpty) return null;
+  return match[config['nameField']]?.toString();
+}
 
 class DetailsPage extends StatefulWidget {
   const DetailsPage({Key? key}) : super(key: key);
@@ -499,19 +545,285 @@ class _DetailsPageState extends State<DetailsPage>
     );
 
     if (confirmed == true) {
-      //commit one by one to the server
-      for (final draft in selectedDrafts) {
-        _commitService.commitDraft(draft.formId, _activityType!, draft.timestamp);
-      }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(
-                '${selectedDrafts.length} draft(s) submitted successfully')),
-      );
-      _clearAllSelections();
-      _loadDrafts();
-      _loadCommits();
+      await _submitDraftsOneByOne(selectedDrafts);
     }
+  }
+
+  // Submits a single draft using the same logic as _submitForm in dynamic_form_page.dart
+  Future<void> _submitSingleDraftMatchingForm(
+      DraftModel draft, BuildContext context) async {
+    log("submitting single draft");
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final user = auth.user;
+    if (user == null) return;
+
+    final userId = user['user_id'].toString();
+    final regionCode = auth.regionId ?? 'C';
+    final formId = draft.formId;
+    final formTitle = draft.title;
+    final subTitle = draft.answers['qn4']?.toString() ?? 'Default Subtitle';
+    final activityType = draft.answers['entity_type']?.toString() ?? 'Baseline';
+    final responseId = auth.generateResponseId(regionCode, int.parse(userId));
+
+    debugPrint("regionData: ${auth.userRegionData}");
+
+    // Convert area keys to actual area values if present
+    Map<String, dynamic> answers = Map<String, dynamic>.from(draft.answers);
+    if (auth.userRegionData != null &&
+        auth.userRegionData is Map<String, dynamic>) {
+      final areaData = auth.userRegionData as Map<String, dynamic>;
+      final areaMappings = [
+        {'key': 'region_id', 'areaType': 'region'},
+        {'key': 'district_id', 'areaType': 'district'},
+        {'key': 'sub_county_id', 'areaType': 'sub_county'},
+        {'key': 'parish_id', 'areaType': 'parish'},
+        {'key': 'village_id', 'areaType': 'village'},
+      ];
+      for (final mapping in areaMappings) {
+        final answerKey = mapping['key']!;
+        final areaType = mapping['areaType']!;
+        if (answers.containsKey(answerKey)) {
+          final areaId = answers[answerKey]?.toString();
+          final areaName = getAreaNameFromRegionData(
+            areaType: areaType,
+            areaId: areaId ?? '',
+            regionData: areaData,
+          );
+          if (areaName != null) {
+            answers[answerKey] = areaName;
+          }
+        }
+      }
+      // Handle projects and organisations if not in userRegionData
+      if (answers.containsKey('project_id') && auth.projects.isNotEmpty) {
+        final areaId = answers['project_id']?.toString();
+        final match = auth.projects.firstWhere(
+          (item) => item['project_id']?.toString() == areaId,
+          orElse: () => {},
+        );
+        if (match.isNotEmpty && match['name'] != null) {
+          answers['project_id'] = match['name'];
+        }
+      }
+      if (answers.containsKey('organisation_id') &&
+          auth.organisations.isNotEmpty) {
+        final areaId = answers['organisation_id']?.toString();
+        final match = auth.organisations.firstWhere(
+          (item) => item['organisation_id']?.toString() == areaId,
+          orElse: () => {},
+        );
+        if (match.isNotEmpty && match['name'] != null) {
+          answers['organisation_id'] = match['name'];
+        }
+      }
+      // New logic: replace qnX keys for area questions with area names
+      // Get form config for this draft
+      final allForms = auth.forms;
+      Map<String, dynamic>? formData;
+      for (final form in allForms) {
+        if (form['form_id'].toString() == draft.formId) {
+          formData = Map<String, dynamic>.from(form);
+          break;
+        }
+      }
+      if (formData != null && formData is Map<String, dynamic>) {
+        final questionList = formData['question_list'] as List<dynamic>?;
+        if (questionList != null) {
+          for (final question in questionList) {
+            if (question['answer_type'] == 'app_list') {
+              final dbTable = question['answer_values']['db_table'];
+              final qnKey = 'qn${question['question_id']}';
+              if (answers.containsKey(qnKey)) {
+                final areaId = answers[qnKey]?.toString();
+                String? areaType;
+                if (dbTable == 'app_district') areaType = 'district';
+                if (dbTable == 'app_sub_county') areaType = 'sub_county';
+                if (dbTable == 'app_parish') areaType = 'parish';
+                if (dbTable == 'app_village') areaType = 'village';
+                if (dbTable == 'region') areaType = 'region';
+                if (areaType != null) {
+                  final areaName = getAreaNameFromRegionData(
+                    areaType: areaType,
+                    areaId: areaId ?? '',
+                    regionData: areaData,
+                  );
+                  if (areaName != null) {
+                    answers[qnKey] = areaName;
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
+    debugPrint("answers: $answers");
+
+    try {
+      Map<String, dynamic> submissionAnswers = jsonDecode(jsonEncode(answers));
+      log("submissionAnswers: $submissionAnswers");
+      submissionAnswers['entity_type'] =
+          activityType.toLowerCase() == 'follow-up' ? 'followup' : 'baseline';
+      submissionAnswers['creator_id'] = userId;
+      submissionAnswers['created_at'] =
+          DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+
+      String? base64Photo;
+      String photoFilename = "null";
+      if (draft.images.containsKey("photo_base64")) {
+        base64Photo = submissionAnswers['photo_base64'];
+        photoFilename = "image_${DateTime.now().millisecondsSinceEpoch}.jpeg";
+      }
+      submissionAnswers['photo'] = photoFilename;
+      submissionAnswers.remove('photo_base64');
+      submissionAnswers.remove('updated_at');
+
+      final Map<String, dynamic> finalAnswers =
+          Map<String, dynamic>.from(submissionAnswers);
+
+      log("finalAnswers: $finalAnswers");
+
+      if (activityType.toLowerCase() == "follow-up") {
+        await auth.apiService.commitFollowUp(
+          responseId: responseId,
+          formId: formId,
+          title: finalAnswers['qn65']?.toString() ?? formTitle,
+          subTitle: subTitle,
+          answers: finalAnswers,
+          creatorId: userId,
+        );
+      } else {
+        log("submitting baseline");
+        log("finalAnswers: $finalAnswers");
+
+        await auth.apiService.commitBaseline(
+          responseId: responseId,
+          formId: formId,
+          title: finalAnswers['qn65']?.toString() ?? formTitle,
+          subTitle: subTitle,
+          answers: finalAnswers,
+          creatorId: userId,
+        );
+        if (base64Photo != null) {
+          try {
+            await auth.apiService.commitPhoto(
+              responseId: responseId,
+              base64Data: base64Photo,
+              filename: photoFilename,
+              creatorId: int.parse(userId),
+            );
+          } catch (e) {
+            // Photo commit failed, but continue
+          }
+        }
+      }
+      await _draftService.updateDraftStatus(formId, activityType, 'submitted');
+    } catch (e) {
+      // Optionally handle error
+      rethrow;
+    }
+  }
+
+  Future<void> _submitDraftsOneByOne(List<DraftModel> drafts) async {
+    int successCount = 0;
+    int failureCount = 0;
+    List<String> failedDrafts = [];
+
+    // Show progress dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text('Submitting Drafts', style: GoogleFonts.poppins()),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                LinearProgressIndicator(
+                  value: (successCount + failureCount) / drafts.length,
+                  backgroundColor: Colors.grey[300],
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.blue[700]!),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  'Submitted: $successCount / ${drafts.length}',
+                  style: GoogleFonts.poppins(fontSize: 14),
+                ),
+                if (failureCount > 0)
+                  Text(
+                    'Failed: $failureCount',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      color: Colors.red,
+                    ),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    try {
+      for (int i = 0; i < drafts.length; i++) {
+        final draft = drafts[i];
+        try {
+          await _submitSingleDraftMatchingForm(draft, context);
+          successCount++;
+        } catch (e) {
+          failureCount++;
+          failedDrafts.add('${draft.title}: ${e.toString()}');
+        }
+        if (mounted) {
+          setState(() {});
+        }
+        if (i < drafts.length - 1) {
+          await Future.delayed(const Duration(milliseconds: 500));
+        }
+      }
+    } finally {
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+    if (mounted) {
+      _showSubmissionResults(successCount, failureCount, failedDrafts);
+    }
+    _clearAllSelections();
+    _loadDrafts();
+    _loadCommits();
+  }
+
+  void _showSubmissionResults(
+      int successCount, int failureCount, List<String> failedDrafts) {
+    String message;
+    Color backgroundColor;
+    Duration duration;
+
+    if (failureCount == 0) {
+      message = 'All $successCount draft(s) submitted successfully!';
+      backgroundColor = Colors.green;
+      duration = const Duration(seconds: 3);
+    } else if (successCount == 0) {
+      message = 'All $failureCount draft(s) failed to submit.';
+      backgroundColor = Colors.red;
+      duration = const Duration(seconds: 6);
+    } else {
+      message =
+          '$successCount draft(s) submitted successfully, $failureCount failed.';
+      backgroundColor = Colors.orange;
+      duration = const Duration(seconds: 6);
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: duration,
+      ),
+    );
   }
 
   DataRow _buildDraftRow(DraftModel draft) {
