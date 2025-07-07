@@ -2,6 +2,7 @@ import 'dart:developer';
 
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/draft_model.dart';
+import '../utils/font_helper.dart';
 
 class DraftService {
   static const String _boxName = 'drafts';
@@ -60,20 +61,11 @@ class DraftService {
 
   List<DraftModel> getDraftsByStatus(
       String formId, String activityType, String status) {
-    return _draftsBox.values.where((draft) {
-      final entityType = draft.answers['entity_type'] as String?;
-
-      if (activityType == 'Baseline' && entityType == 'baseline') {
-        log("Checking Baseline Drafts: ${draft.formId}, Status: $status, Entity Type: $entityType");
-        
-        return draft.formId == formId && draft.status == status;
-      } else if (activityType == 'Follow-up' && entityType == 'followup') {
-        log("Checking Follow-up Drafts: ${draft.formId}, Status: $status, Entity Type: $entityType");
-        return draft.formId == formId && draft.status == status;
-      }
-
-      return false;
+    final drafts = _draftsBox.values.where((draft) {
+      return draft.formId == formId &&
+          draft.answers['entity_type'] == activityType;
     }).toList();
+    return drafts;
   }
 
   Future<void> clearAllDrafts() async {

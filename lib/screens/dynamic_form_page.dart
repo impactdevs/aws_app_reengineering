@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:developer';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -9,6 +8,7 @@ import 'package:shimmer/shimmer.dart';
 import '../providers/auth_provider.dart';
 import '../models/draft_model.dart';
 import '../services/draft_service.dart';
+import '../utils/error_handler.dart';
 import 'package:intl/intl.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -33,6 +33,12 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   bool _isPaused = false;
   Map<String, dynamic> _areaData = {};
   final PageStorageKey _scrollKey = PageStorageKey('formScrollKey');
+
+  // Cache for form questions to avoid repeated processing
+  List<dynamic>? _cachedQuestions;
+
+  // Track the current draft being edited (if any)
+  DraftModel? _currentDraft;
 
   @override
   void initState() {
@@ -66,7 +72,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     setState(() {
       _isPaused = state == AppLifecycleState.paused;
     });
-    debugPrint('DynamicFormPage AppLifecycleState changed to: $state');
     if (state == AppLifecycleState.paused && !_isPaused) {
       // Only clear if not submitting
       _fadeController.stop();
@@ -115,7 +120,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     super.didChangeDependencies();
     if (!_didInit) {
       _didInit = true;
-      _initFetch();
+      // Use microtask to avoid blocking the UI thread
+      Future.microtask(() => _initFetch());
     }
   }
 
@@ -124,15 +130,22 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final user = auth.user;
 
+    // Load missing data in parallel if needed
     if (user != null) {
-      if (auth.userRegionData == null) {
-        await auth.loadUserRegionData(user['user_id'].toString());
+      final futures = <Future>[];
+
+      if (!auth.hasUserRegionData) {
+        futures.add(auth.loadUserRegionData(user['user_id'].toString()));
       }
-      if (auth.projects.isEmpty) {
-        await auth.loadProjects();
+      if (!auth.hasProjects) {
+        futures.add(auth.loadProjects());
       }
-      if (auth.organisations.isEmpty) {
-        await auth.loadOrganisations();
+      if (!auth.hasOrganisations) {
+        futures.add(auth.loadOrganisations());
+      }
+
+      if (futures.isNotEmpty) {
+        await Future.wait(futures);
       }
     }
 
@@ -151,17 +164,26 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       }
     }
 
+    // Initialize date fields efficiently
     if (_formData != null) {
-      final List<dynamic> questions = _formData!['question_list'] ?? [];
-      for (var question in questions) {
+      final questionList = _formData!['question_list'];
+      if (questionList != null) {
+        // Ensure proper type conversion for cached questions
+        _cachedQuestions = List<dynamic>.from(questionList);
+      } else {
+        _cachedQuestions = [];
+      }
+
+      final now = DateTime.now().toIso8601String().split('T').first;
+
+      for (var question in _cachedQuestions!) {
         if (question['answer_type']?.toString() == 'date') {
           final String questionId = question['question_id'].toString();
           final String answerKey = "qn$questionId";
           if (!_answers.containsKey(answerKey) ||
               _answers[answerKey] == null ||
               _answers[answerKey].isEmpty) {
-            _answers[answerKey] =
-                DateTime.now().toIso8601String().split('T').first;
+            _answers[answerKey] = now;
           }
         }
       }
@@ -173,6 +195,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
 
   void _loadDraftFromModel(DraftModel draft) {
     setState(() {
+      _currentDraft = draft; // Store the current draft being edited
       _answers = Map<String, dynamic>.from(draft.answers);
       _answers.forEach((key, value) {
         if (_controllers.containsKey(key)) {
@@ -203,7 +226,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     if (responses is List && responses.isNotEmpty) {
       responses = responses.first;
     }
-    // log("Loaded follow-up responses: $responses");
     setState(() {
       _answers = Map<String, dynamic>.from(responses);
       _answers.forEach((key, value) {
@@ -223,23 +245,37 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   Future<void> _loadFormFromMemory(String formId) async {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final allForms = auth.forms;
-    log("forms: ${allForms.length} loaded from memory");
-    final form = allForms.firstWhere(
-      (f) => f['form_id'].toString() == formId,
-      orElse: () => null,
-    );
+
+    // Use more efficient search with proper type conversion
+    Map<String, dynamic>? form;
+    for (final f in allForms) {
+      if (f['form_id'].toString() == formId) {
+        // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+        form = Map<String, dynamic>.from(f);
+        break;
+      }
+    }
 
     if (form != null) {
       _formData = form;
-    } else {
-      debugPrint('Form with id $formId not found in memory');
     }
-    setState(() => _loading = false);
+  }
+
+  List<dynamic> get _questions {
+    if (_cachedQuestions != null) {
+      return _cachedQuestions!;
+    }
+    final questionList = _formData?['question_list'];
+    if (questionList != null) {
+      // Ensure proper type conversion for questions
+      return List<dynamic>.from(questionList);
+    }
+    return [];
   }
 
   bool _validateForm() {
     if (_formData == null) return false;
-    final List<dynamic> questions = _formData!['question_list'] ?? [];
+    final questions = _questions;
     for (var question in questions) {
       bool required = question['required'] ?? true;
       if (!required) continue;
@@ -277,19 +313,34 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       }
     }
 
+    //push activity type to draft into answers and call it entity_type
+    _answers['entity_type'] = activityType;
+
+    // If we're editing an existing draft, use its timestamp; otherwise create a new one
+    final timestamp = _currentDraft?.timestamp ?? DateTime.now();
+
     final draft = DraftModel(
       formId: formId,
       title: formTitle,
       answers: Map<String, dynamic>.from(_answers),
       images: imageMap,
-      timestamp: DateTime.now(),
+      timestamp: timestamp,
       status: 'draft',
     );
 
-    await _draftService.saveDraft(draft, activityType);
+    // If we're editing an existing draft, update it; otherwise save as new
+    if (_currentDraft != null) {
+      await _draftService.updateDraft(draft, activityType);
+    } else {
+      await _draftService.saveDraft(draft, activityType);
+    }
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Draft saved locally!')),
+        SnackBar(
+          content: Text(_currentDraft != null
+              ? 'Draft updated locally!'
+              : 'Draft saved locally!'),
+        ),
       );
       Navigator.pop(context);
     }
@@ -354,22 +405,11 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       submissionAnswers.remove('photo_base64');
       submissionAnswers.remove('updated_at'); // Remove updated_at if present
 
-      debugPrint('submissionAnswers in _submitForm after adding fields:');
-      submissionAnswers.forEach((key, value) {
-        log('$key: $value');
-      });
-
       final Map<String, dynamic> finalAnswers =
           Map<String, dynamic>.from(submissionAnswers);
 
-      debugPrint('finalAnswers before API call:');
-      finalAnswers.forEach((key, value) {
-        debugPrint('$key: $value');
-      });
-
       Map<String, dynamic> response;
       if (activityType == "Follow-up") {
-        debugPrint('Submitting follow-up with finalAnswers: [logged above]');
         response = await auth.apiService.commitFollowUp(
           responseId: responseId,
           formId: formId,
@@ -384,7 +424,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
           );
         }
       } else {
-        debugPrint('Submitting baseline with finalAnswers: [logged above]');
         response = await auth.apiService.commitBaseline(
           responseId: responseId,
           formId: formId,
@@ -407,10 +446,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
               filename: photoFilename,
               creatorId: int.parse(userId),
             );
-            debugPrint(
-                'Photo committed successfully after 5-minute delay for responseId: $responseId');
           } catch (e) {
-            debugPrint('Error committing photo after delay: $e');
+            // Photo commit failed
           }
         }
       }
@@ -420,10 +457,21 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         Navigator.of(context).pop();
       }
     } catch (e) {
-      debugPrint('Error submitting form: $e');
       if (mounted) {
+        final userFriendlyError = ErrorHandler.getFormSubmissionErrorMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error submitting form: $e')),
+          SnackBar(
+            content: Text(userFriendlyError),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: 'Dismiss',
+              textColor: Colors.white,
+              onPressed: () {
+                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+              },
+            ),
+          ),
         );
       }
     } finally {
@@ -643,7 +691,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                               color: Colors.grey[600],
                             ),
                           ),
-                          dialogTheme: DialogTheme(
+                          dialogTheme: DialogThemeData(
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(16),
                             ),
@@ -962,7 +1010,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     final qlabel = question['question']?.toString() ?? 'No label';
     final questionId = question['question_id'].toString();
     final answerKey = "qn$questionId";
-    final questionList = _formData!['question_list'] as List<dynamic>? ?? [];
+    final questionList = _questions;
 
     return Card(
       elevation: 4,
@@ -987,12 +1035,16 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                 final qtype = question['answer_type']?.toString() ?? 'text';
                 switch (qtype) {
                   case 'radio':
-                    final options =
-                        question['answer_values'] as List<dynamic>? ?? [];
+                    final answerValues = question['answer_values'];
+                    final options = answerValues != null
+                        ? List<dynamic>.from(answerValues)
+                        : [];
                     return _buildRadioGroup(answerKey, qlabel, options);
                   case 'checkbox':
-                    final options =
-                        question['answer_values'] as List<dynamic>? ?? [];
+                    final answerValues = question['answer_values'];
+                    final options = answerValues != null
+                        ? List<dynamic>.from(answerValues)
+                        : [];
                     return _buildCheckboxGroup(answerKey, qlabel, options);
                   case 'number':
                     return _buildNumberField(answerKey, qlabel);
@@ -1025,7 +1077,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                             if (item.isNotEmpty) {
                               _areaData["qn${q['question_id']}"] =
                                   item['name']?.toString() ?? '';
-                              debugPrint("Area Data: $_areaData");
                             }
                           }
                           break;
@@ -1055,7 +1106,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                             if (item.isNotEmpty) {
                               _areaData["qn${q['question_id']}"] =
                                   item['name']?.toString() ?? '';
-                              debugPrint("Area Data: $_areaData");
                             }
                           }
                           break;
@@ -1084,7 +1134,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                             if (item.isNotEmpty) {
                               _areaData["qn${q['question_id']}"] =
                                   item['name']?.toString() ?? '';
-                              debugPrint("Area Data: $_areaData");
                             }
                           }
                           break;
@@ -1178,7 +1227,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       );
     }
     final title = _formData!['title'] ?? 'Untitled';
-    final questionList = _formData!['question_list'] as List<dynamic>? ?? [];
+    final questionList = _questions;
 
     List<Widget> formWidgets = List.generate(questionList.length, (index) {
       final question = questionList[index];

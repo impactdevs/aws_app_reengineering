@@ -28,7 +28,11 @@ class OfflineStorageService {
 
   Future<Map<String, dynamic>?> getUserProfile() async {
     final box = await _storage;
-    return box.get(_userProfileBox) as Map<String, dynamic>?;
+    final data = box.get(_userProfileBox);
+    if (data != null) {
+      return Map<String, dynamic>.from(data);
+    }
+    return null;
   }
 
   Future<Box<dynamic>> get _storage async {
@@ -47,7 +51,11 @@ class OfflineStorageService {
 
   Future<List<dynamic>?> getForms() async {
     final box = await _storage;
-    return box.get(_formsBox);
+    final data = box.get(_formsBox);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
   }
 
   // ================= Follow-up Entries Storage =================
@@ -62,7 +70,11 @@ class OfflineStorageService {
       String regionId, String formId) async {
     final box = await _storage;
     final key = _followUpKey(regionId, formId);
-    return box.get(key) as List<dynamic>?;
+    final data = box.get(key);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
   }
 
   String _followUpKey(String regionId, String formId) =>
@@ -80,7 +92,11 @@ class OfflineStorageService {
       String regionId, String formId) async {
     final box = await _storage;
     final key = _baselineKey(regionId, formId);
-    return box.get(key) as List<dynamic>?;
+    final data = box.get(key);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
   }
 
   String _baselineKey(String regionId, String formId) =>
@@ -94,7 +110,11 @@ class OfflineStorageService {
 
   Future<List<dynamic>?> getProjects() async {
     final box = await _storage;
-    return box.get(_projectsBox) as List<dynamic>?;
+    final data = box.get(_projectsBox);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
   }
 
   // ================= Organisations Storage =================
@@ -105,7 +125,11 @@ class OfflineStorageService {
 
   Future<List<dynamic>?> getOrganisations() async {
     final box = await _storage;
-    return box.get(_organisationsBox) as List<dynamic>?;
+    final data = box.get(_organisationsBox);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
   }
 
   // ================= User Region Areas Storage =================
@@ -119,7 +143,12 @@ class OfflineStorageService {
   Future<Map<String, dynamic>?> getUserRegionAreas(String userId) async {
     final box = await _storage;
     final key = _userRegionKey(userId);
-    return box.get(key) as Map<String, dynamic>?;
+    final data = box.get(key);
+    if (data != null) {
+      // Convert Map<dynamic, dynamic> to Map<String, dynamic>
+      return Map<String, dynamic>.from(data);
+    }
+    return null;
   }
 
   String _userRegionKey(String userId) => '$_userRegionAreasBox|$userId';
