@@ -8,7 +8,7 @@ import '../utils/error_handler.dart';
 import 'package:dio/dio.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService(); // TODO: remove this
   bool _isLoading = false;
   Map<String, dynamic>? _user;
   List<dynamic> _forms = [];

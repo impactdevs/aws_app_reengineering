@@ -1704,4 +1704,3 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 }
-clean up and organize everything here, the actions for draft and committed shpould bean ellipsis, make the table follow the uiux principals and make the actions use the sma methods both for committed and draft, the ones for draft are the ones correct, make everything look great
