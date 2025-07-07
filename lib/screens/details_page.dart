@@ -1,6 +1,5 @@
 import 'dart:developer';
 
-import 'package:aws_app/models/commit_model.dart';
 import 'package:aws_app/services/commit_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -70,7 +69,7 @@ class _DetailsPageState extends State<DetailsPage>
   late DraftService _draftService;
   late CommitService _commitService;
   List<DraftModel> _drafts = [];
-  List<CommitModel> _commits = [];
+  List<DraftModel> _commits = [];
   List<dynamic> _committedNewEntries = [];
   bool _isLoadingEntries = false;
   String? _formId;
@@ -169,8 +168,8 @@ class _DetailsPageState extends State<DetailsPage>
   void _loadCommits() {
     if (_formId != null && _activityType != null) {
       setState(() {
-        _commits = _commitService.getCommitsByStatus(
-            _formId!, _activityType!, 'draft');
+        _commits = _draftService.getDraftsByStatus(
+            _formId!, _activityType!, 'submitted');
       });
     }
   }
@@ -342,7 +341,7 @@ class _DetailsPageState extends State<DetailsPage>
     return '${draft.formId}_${draft.timestamp.millisecondsSinceEpoch}';
   }
 
-  String _getCommitKey(CommitModel commit) {
+  String _getCommitKey(DraftModel commit) {
     return '${commit.formId}_${commit.timestamp.millisecondsSinceEpoch}';
   }
 
@@ -362,7 +361,7 @@ class _DetailsPageState extends State<DetailsPage>
     });
   }
 
-  void _toggleCommitSelection(CommitModel commit) {
+  void _toggleCommitSelection(DraftModel commit) {
     setState(() {
       final key = _getCommitKey(commit);
       if (_selectedCommits.contains(key)) {
@@ -507,7 +506,8 @@ class _DetailsPageState extends State<DetailsPage>
     if (confirmed == true) {
       for (final commit in selectedCommits) {
         if (_formId != null && _activityType != null) {
-          _commitService.deleteCommit(
+          // delete the commit using draft service
+          _draftService.deleteDraft(
               commit.formId, _activityType!, commit.timestamp);
         }
       }
@@ -547,6 +547,32 @@ class _DetailsPageState extends State<DetailsPage>
     if (confirmed == true) {
       await _submitDraftsOneByOne(selectedDrafts);
     }
+  }
+
+  // Helper to get the title from form config and answers
+  String _getDynamicTitle(Map<String, dynamic> formData,
+      Map<String, dynamic> answers, String fallback) {
+    if (formData['title_fields'] != null &&
+        formData['title_fields']['entry_title'] is List &&
+        formData['title_fields']['entry_title'].isNotEmpty) {
+      final titleQnId = formData['title_fields']['entry_title'][0];
+      final title = answers['qn$titleQnId']?.toString();
+      if (title != null && title.isNotEmpty) return title;
+    }
+    return fallback;
+  }
+
+  // Helper to get the subtitle from form config and answers
+  String _getDynamicSubTitle(Map<String, dynamic> formData,
+      Map<String, dynamic> answers, String fallback) {
+    if (formData['title_fields'] != null &&
+        formData['title_fields']['entry_sub_title'] is List &&
+        formData['title_fields']['entry_sub_title'].isNotEmpty) {
+      final subTitleQnId = formData['title_fields']['entry_sub_title'][0];
+      final subTitle = answers['qn$subTitleQnId']?.toString();
+      if (subTitle != null && subTitle.isNotEmpty) return subTitle;
+    }
+    return fallback;
   }
 
   // Submits a single draft using the same logic as _submitForm in dynamic_form_page.dart
@@ -684,41 +710,57 @@ class _DetailsPageState extends State<DetailsPage>
 
       log("finalAnswers: $finalAnswers");
 
-      if (activityType.toLowerCase() == "follow-up") {
-        await auth.apiService.commitFollowUp(
-          responseId: responseId,
-          formId: formId,
-          title: finalAnswers['qn65']?.toString() ?? formTitle,
-          subTitle: subTitle,
-          answers: finalAnswers,
-          creatorId: userId,
-        );
-      } else {
-        log("submitting baseline");
-        log("finalAnswers: $finalAnswers");
-
-        await auth.apiService.commitBaseline(
-          responseId: responseId,
-          formId: formId,
-          title: finalAnswers['qn65']?.toString() ?? formTitle,
-          subTitle: subTitle,
-          answers: finalAnswers,
-          creatorId: userId,
-        );
-        if (base64Photo != null) {
-          try {
-            await auth.apiService.commitPhoto(
-              responseId: responseId,
-              base64Data: base64Photo,
-              filename: photoFilename,
-              creatorId: int.parse(userId),
-            );
-          } catch (e) {
-            // Photo commit failed, but continue
-          }
+      final allForms = auth.forms;
+      Map<String, dynamic>? formData;
+      for (final form in allForms) {
+        if (form['form_id'].toString() == draft.formId) {
+          formData = Map<String, dynamic>.from(form);
+          break;
         }
       }
-      await _draftService.updateDraftStatus(formId, activityType, 'submitted');
+      if (formData != null && formData is Map<String, dynamic>) {
+        final dynamicTitle =
+            _getDynamicTitle(formData, finalAnswers, draft.title);
+        final dynamicSubTitle = _getDynamicSubTitle(formData, finalAnswers,
+            finalAnswers['qn4']?.toString() ?? 'Default Subtitle');
+
+        if (activityType.toLowerCase() == "follow-up") {
+          await auth.apiService.commitFollowUp(
+            responseId: responseId,
+            formId: formId,
+            title: dynamicTitle,
+            subTitle: dynamicSubTitle,
+            answers: finalAnswers,
+            creatorId: userId,
+          );
+        } else {
+          log("submitting baseline");
+          log("finalAnswers: $finalAnswers");
+
+          await auth.apiService.commitBaseline(
+            responseId: responseId,
+            formId: formId,
+            title: dynamicTitle,
+            subTitle: dynamicSubTitle,
+            answers: finalAnswers,
+            creatorId: userId,
+          );
+          if (base64Photo != null) {
+            try {
+              await auth.apiService.commitPhoto(
+                responseId: responseId,
+                base64Data: base64Photo,
+                filename: photoFilename,
+                creatorId: int.parse(userId),
+              );
+            } catch (e) {
+              // Photo commit failed, but continue
+            }
+          }
+        }
+        await _draftService.updateDraftStatus(
+            formId, activityType, 'submitted');
+      }
     } catch (e) {
       // Optionally handle error
       rethrow;
@@ -911,7 +953,7 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
-  DataRow _buildCommitRow(CommitModel commit) {
+  DataRow _buildCommitRow(DraftModel commit) {
     final isSelected = _selectedCommits.contains(_getCommitKey(commit));
 
     return DataRow(
@@ -929,7 +971,7 @@ class _DetailsPageState extends State<DetailsPage>
                   ),
                 Expanded(
                   child: Text(
-                    commit.title,
+                    _getDynamicTitleForCommit(commit),
                     style: GoogleFonts.poppins(
                       fontSize: 14,
                       fontWeight: FontWeight.w500,
@@ -967,33 +1009,27 @@ class _DetailsPageState extends State<DetailsPage>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!_isSelectionMode) ...[
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.blue[50],
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: IconButton(
-                      icon:
-                          const Icon(Icons.edit, size: 18, color: Colors.blue),
-                      onPressed: () => _editCommit(commit),
-                      tooltip: 'Edit',
-                    ),
+                if (!_isSelectionMode)
+                  PopupMenuButton<String>(
+                    icon: Icon(Icons.more_vert),
+                    onSelected: (value) {
+                      if (value == 'edit') {
+                        _editCommit(commit);
+                      } else if (value == 'delete') {
+                        _deleteCommit(commit);
+                      }
+                    },
+                    itemBuilder: (context) => [
+                      PopupMenuItem(
+                        value: 'edit',
+                        child: Text('Edit', style: GoogleFonts.poppins()),
+                      ),
+                      PopupMenuItem(
+                        value: 'delete',
+                        child: Text('Delete', style: GoogleFonts.poppins(color: Colors.red)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.red[50],
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: IconButton(
-                      icon:
-                          const Icon(Icons.delete, size: 18, color: Colors.red),
-                      onPressed: () => _deleteCommit(commit),
-                      tooltip: 'Delete',
-                    ),
-                  ),
-                ],
               ],
             ),
           ),
@@ -1140,7 +1176,7 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
-  void _editCommit(CommitModel commit) {
+  void _editCommit(DraftModel commit) {
     Navigator.pushNamed(
       context,
       '/form_page',
@@ -1153,7 +1189,7 @@ class _DetailsPageState extends State<DetailsPage>
     ).then((_) => _loadDrafts());
   }
 
-  void _deleteCommit(CommitModel commit) {
+  void _deleteCommit(DraftModel commit) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -1193,6 +1229,22 @@ class _DetailsPageState extends State<DetailsPage>
         'follow_up_data': entry,
       },
     ).then((_) => _loadEntries());
+  }
+
+  String _getDynamicTitleForCommit(DraftModel commit) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final allForms = auth.forms;
+    Map<String, dynamic>? formData;
+    for (final form in allForms) {
+      if (form['form_id'].toString() == commit.formId) {
+        formData = Map<String, dynamic>.from(form);
+        break;
+      }
+    }
+    if (formData != null) {
+      return _getDynamicTitle(formData, commit.answers, 'Untitled');
+    }
+    return 'Untitled';
   }
 
   Widget _buildDataTable({required List<dynamic> data, required String type}) {
@@ -1652,3 +1704,4 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 }
+clean up and organize everything here, the actions for draft and committed shpould bean ellipsis, make the table follow the uiux principals and make the actions use the sma methods both for committed and draft, the ones for draft are the ones correct, make everything look great

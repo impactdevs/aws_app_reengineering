@@ -63,7 +63,8 @@ class DraftService {
       String formId, String activityType, String status) {
     final drafts = _draftsBox.values.where((draft) {
       return draft.formId == formId &&
-          draft.answers['entity_type'] == activityType;
+          draft.answers['entity_type'] == activityType &&
+          draft.status == status;
     }).toList();
     return drafts;
   }
