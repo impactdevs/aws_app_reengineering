@@ -56,10 +56,24 @@ class AuthProvider extends ChangeNotifier {
       final userString = prefs.getString('user');
       if (userString != null) {
         _user = jsonDecode(userString);
+        _regionId = prefs.getString('region_id'); // Load region ID
         notifyListeners();
+        return;
       }
+      // If not in SharedPreferences, check Hive
+      final hiveProfile = await OfflineStorageService().getUserProfile();
+      if (hiveProfile != null) {
+        _user = hiveProfile;
+        notifyListeners();
+        return;
+      }
+      // If neither, ensure _user is null
+      _user = null;
+      notifyListeners();
     } catch (e) {
       _user = null;
+      _regionId = null;
+      notifyListeners();
     }
   }
 
@@ -75,39 +89,25 @@ class AuthProvider extends ChangeNotifier {
     try {
       final response = await _apiService.login(username, password);
 
+      // Handle response based on status code
       if (response['status'] == 200) {
         _user = response['data'] as Map<String, dynamic>;
-        _regionId = _user?['region_id']
-            ?.toString(); // Store region_id from login response
-        await _persistUser(_user!);
+        _regionId = _user?['region_id']?.toString();
+        await _persistUser(_user!); // Persist only user data
 
-        // Preload forms for immediate access
-        await fetchForms();
+        // Preload forms without blocking
+        fetchForms().catchError((e) => debugPrint("Forms fetch error: $e"));
       } else {
-        // Handle different response status codes
-        final status = response['status'];
-        final message = response['message'] ?? 'Unknown error occurred';
+        // Extract error message properly
+        String message = response['messages']?['error'] ??
+            response['message'] ??
+            'Login failed';
 
-        switch (status) {
-          case 401:
-            throw Exception(
-                'Invalid credentials. Please check your email and password.');
-          case 403:
-            throw Exception(
-                'Access denied. Your account may be disabled or you don\'t have permission to access this application.');
-          case 404:
-            throw Exception(
-                'User account not found. Please check your email address.');
-          case 500:
-            throw Exception(
-                'Server error. Please try again later or contact support if the problem persists.');
-          default:
-            throw Exception('Login failed: $message');
-        }
+        throw Exception(message);
       }
     } catch (e) {
-      // Use the ErrorHandler utility for consistent error messages
-      throw Exception(ErrorHandler.getLoginErrorMessage(e));
+      // Return original error for proper handling
+      rethrow;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -126,6 +126,10 @@ class AuthProvider extends ChangeNotifier {
     await clearUser();
     //clear all hive data
     await OfflineStorageService().clearAllData();
+
+    // clear shared preferences too
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
     notifyListeners();
   }
 

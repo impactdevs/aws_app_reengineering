@@ -1,3 +1,4 @@
+import 'package:aws_app/screens/auth/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -232,6 +233,29 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 
   Widget _buildDrawer(Map<String, dynamic>? user) {
+    String getInitial() {
+      if (user != null &&
+          user['first_name'] != null &&
+          (user['first_name'] as String).isNotEmpty) {
+        return (user['first_name'] as String)[0].toUpperCase();
+      }
+      return 'U';
+    }
+
+    String getWelcome() {
+      final first = (user != null &&
+              user['first_name'] != null &&
+              (user['first_name'] as String).isNotEmpty)
+          ? user['first_name']
+          : 'User';
+      final last = (user != null &&
+              user['last_name'] != null &&
+              (user['last_name'] as String).isNotEmpty)
+          ? user['last_name']
+          : '';
+      return 'Welcome, $first${last.isNotEmpty ? ' $last' : ''}';
+    }
+
     return Drawer(
       child: ListView(
         children: [
@@ -250,7 +274,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   radius: 40,
                   backgroundColor: Colors.white,
                   child: Text(
-                    user != null ? user['first_name'][0] : 'U',
+                    getInitial(),
                     style: GoogleFonts.poppins(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -260,9 +284,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  user != null
-                      ? 'Welcome, ${user['first_name']} ${user['last_name']}'
-                      : 'User not found',
+                  getWelcome(),
                   style: GoogleFonts.poppins(
                     color: Colors.white,
                     fontSize: 18,
@@ -351,7 +373,8 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   Provider.of<AuthProvider>(context, listen: false);
               authProvider.logout();
               Navigator.of(ctx).pop();
-              Navigator.pushReplacementNamed(context, '/login');
+              Navigator.pushReplacement(context,
+                  MaterialPageRoute(builder: (context) => const LoginPage()));
             },
             child: Text(
               'LOGOUT',

@@ -86,6 +86,62 @@ class _DetailsPageState extends State<DetailsPage>
   Set<String> _selectedEntries = {};
   bool _isSelectionMode = false;
 
+  // Search state for each tab
+  final List<String> _searchQueries = ['', '', ''];
+  final List<TextEditingController> _searchControllers = [
+    TextEditingController(),
+    TextEditingController(),
+    TextEditingController(),
+  ];
+
+  // Sorting state for each tab
+  final List<int?> _sortColumnIndices = [null, null, null];
+  final List<bool> _sortAscending = [true, true, true];
+
+  int get _activeTabIndex => _tabController?.index ?? 0;
+
+  String _getSearchPlaceholder() {
+    if (_activityType == 'Follow-up') {
+      switch (_activeTabIndex) {
+        case 0:
+          return 'Search Committed Entries...';
+        case 1:
+          return 'Search Drafts...';
+        case 2:
+          return 'Search Commits...';
+      }
+    } else {
+      switch (_activeTabIndex) {
+        case 0:
+          return 'Search Drafts...';
+        case 1:
+          return 'Search Commits...';
+      }
+    }
+    return 'Search...';
+  }
+
+  String _getCurrentType() {
+    if (_activityType == 'Follow-up') {
+      switch (_activeTabIndex) {
+        case 0:
+          return 'Committed Entries';
+        case 1:
+          return 'Drafts';
+        case 2:
+          return 'Commits';
+      }
+    } else {
+      switch (_activeTabIndex) {
+        case 0:
+          return 'Drafts';
+        case 1:
+          return 'Commits';
+      }
+    }
+    return '';
+  }
+
   @override
   void initState() {
     super.initState();
@@ -106,6 +162,11 @@ class _DetailsPageState extends State<DetailsPage>
       length: 2,
       vsync: this,
     );
+    _tabController?.addListener(_handleTabChange);
+  }
+
+  void _handleTabChange() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -120,11 +181,13 @@ class _DetailsPageState extends State<DetailsPage>
     if (_activityType != newActivityType) {
       _activityType = newActivityType;
       final newLength = _activityType == "Follow-up" ? 3 : 2;
+      _tabController?.removeListener(_handleTabChange);
       _tabController?.dispose();
       _tabController = TabController(
         length: newLength,
         vsync: this,
       );
+      _tabController?.addListener(_handleTabChange);
     }
 
     _draftService = Provider.of<DraftService>(context, listen: false);
@@ -151,6 +214,7 @@ class _DetailsPageState extends State<DetailsPage>
 
   @override
   void dispose() {
+    _tabController?.removeListener(_handleTabChange);
     _tabController?.dispose();
     _fadeController.dispose();
     super.dispose();
@@ -1044,6 +1108,9 @@ class _DetailsPageState extends State<DetailsPage>
     final parish = entry['parish']?.toString() ?? "N/A";
     final isSelected = _selectedEntries.contains(_getEntryKey(entry));
 
+    // Determine if we are in Follow-up, NEW tab
+    final bool showFollowUpAction = _activityType == "Follow-up" && (_tabController?.index == 0);
+
     return DataRow(
       cells: [
         DataCell(
@@ -1098,17 +1165,28 @@ class _DetailsPageState extends State<DetailsPage>
         DataCell(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: _activityType == "Follow-up" && !_isSelectionMode
+            child: showFollowUpAction && !_isSelectionMode
                 ? Container(
                     decoration: BoxDecoration(
                       color: Colors.blue[50],
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: IconButton(
-                      icon:
-                          const Icon(Icons.edit, size: 18, color: Colors.blue),
-                      onPressed: () => _editCommittedEntry(entry),
-                      tooltip: 'Edit',
+                      icon: const Icon(Icons.playlist_add_check, size: 18, color: Colors.blue),
+                      onPressed: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/form_page',
+                          arguments: {
+                            'form_id': _formId,
+                            'form_title': entry['title'] ?? 'Untitled',
+                            'activity_type': _activityType,
+                            'follow_up_data': entry,
+                            'response_id': entry['response_id'],
+                          },
+                        );
+                      },
+                      tooltip: 'Follow Up',
                     ),
                   )
                 : const SizedBox(),
@@ -1218,19 +1296,6 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
-  void _editCommittedEntry(Map<String, dynamic> entry) {
-    Navigator.pushNamed(
-      context,
-      '/form_page',
-      arguments: {
-        'form_id': _formId,
-        'form_title': entry['title'] ?? 'Untitled',
-        'activity_type': _activityType,
-        'follow_up_data': entry,
-      },
-    ).then((_) => _loadEntries());
-  }
-
   String _getDynamicTitleForCommit(DraftModel commit) {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final allForms = auth.forms;
@@ -1247,8 +1312,117 @@ class _DetailsPageState extends State<DetailsPage>
     return 'Untitled';
   }
 
-  Widget _buildDataTable({required List<dynamic> data, required String type}) {
-    if (data.isEmpty) {
+  void _onSort(int tabIndex, int columnIndex, bool ascending, String type) {
+    setState(() {
+      _sortColumnIndices[tabIndex] = columnIndex;
+      _sortAscending[tabIndex] = ascending;
+      // Sorting is handled in _buildDataTable
+    });
+  }
+
+  Widget _buildDataTable({required List<dynamic> data, required String type, required int tabIndex}) {
+    // Use the search query/controller for the current tab
+    final searchQuery = _searchQueries[tabIndex];
+    final searchController = _searchControllers[tabIndex];
+    List<dynamic> filteredData = data;
+    if (searchQuery.isNotEmpty) {
+      final query = searchQuery.toLowerCase();
+      switch (type) {
+        case 'Drafts':
+          filteredData = _drafts.where((draft) {
+            final title = _getDraftTitle(draft).toLowerCase();
+            final area = _getAreaForDraft(draft).toLowerCase();
+            return title.contains(query) || area.contains(query);
+          }).toList();
+          break;
+        case 'Commits':
+          filteredData = _commits.where((commit) {
+            final title = _getDynamicTitleForCommit(commit).toLowerCase();
+            final status = commit.status.toLowerCase();
+            return title.contains(query) || status.contains(query);
+          }).toList();
+          break;
+        case 'Committed Entries':
+          filteredData = _committedNewEntries.where((entry) {
+            final map = entry is Map<String, dynamic> ? entry : Map<String, dynamic>.from(entry as Map);
+            final title = (map['title']?.toString() ?? '').toLowerCase();
+            final subTitle = (map['sub_title']?.toString() ?? '').toLowerCase();
+            final parish = (map['parish']?.toString() ?? '').toLowerCase();
+            return title.contains(query) || subTitle.contains(query) || parish.contains(query);
+          }).toList();
+          break;
+      }
+    }
+
+    // Sorting
+    final sortColumnIndex = _sortColumnIndices[tabIndex];
+    final ascending = _sortAscending[tabIndex];
+    if (sortColumnIndex != null) {
+      switch (type) {
+        case 'Drafts':
+          if (sortColumnIndex == 0) {
+            filteredData.sort((a, b) {
+              final aTitle = _getDraftTitle(a).toLowerCase();
+              final bTitle = _getDraftTitle(b).toLowerCase();
+              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+            });
+          } else if (sortColumnIndex == 1) {
+            filteredData.sort((a, b) {
+              final aArea = _getAreaForDraft(a).toLowerCase();
+              final bArea = _getAreaForDraft(b).toLowerCase();
+              return ascending ? aArea.compareTo(bArea) : bArea.compareTo(aArea);
+            });
+          }
+          break;
+        case 'Commits':
+          if (sortColumnIndex == 0) {
+            filteredData.sort((a, b) {
+              final aTitle = _getDynamicTitleForCommit(a).toLowerCase();
+              final bTitle = _getDynamicTitleForCommit(b).toLowerCase();
+              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+            });
+          } else if (sortColumnIndex == 1) {
+            filteredData.sort((a, b) {
+              final aStatus = a.status.toLowerCase();
+              final bStatus = b.status.toLowerCase();
+              return ascending ? aStatus.compareTo(bStatus) : bStatus.compareTo(aStatus);
+            });
+          }
+          break;
+        case 'Committed Entries':
+          if (sortColumnIndex == 0) {
+            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData.sort((a, b) {
+              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aTitle = (aMap['title']?.toString() ?? '').toLowerCase();
+              final bTitle = (bMap['title']?.toString() ?? '').toLowerCase();
+              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+            });
+          } else if (sortColumnIndex == 1) {
+            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData.sort((a, b) {
+              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aSub = (aMap['sub_title']?.toString() ?? '').toLowerCase();
+              final bSub = (bMap['sub_title']?.toString() ?? '').toLowerCase();
+              return ascending ? aSub.compareTo(bSub) : bSub.compareTo(aSub);
+            });
+          } else if (sortColumnIndex == 2) {
+            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData.sort((a, b) {
+              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aParish = (aMap['parish']?.toString() ?? '').toLowerCase();
+              final bParish = (bMap['parish']?.toString() ?? '').toLowerCase();
+              return ascending ? aParish.compareTo(bParish) : bParish.compareTo(aParish);
+            });
+          }
+          break;
+      }
+    }
+
+    if (filteredData.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -1295,7 +1469,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Title',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1305,7 +1483,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Subtitle',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1317,7 +1499,7 @@ class _DetailsPageState extends State<DetailsPage>
                 )),
           )),
         ];
-        rows = _drafts.map((draft) => _buildDraftRow(draft)).toList();
+        rows = filteredData.map((draft) => _buildDraftRow(draft)).toList();
         break;
 
       case 'Commits':
@@ -1331,7 +1513,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Title',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1341,7 +1527,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Status',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1353,7 +1543,7 @@ class _DetailsPageState extends State<DetailsPage>
                 )),
           )),
         ];
-        rows = _commits.map((commit) => _buildCommitRow(commit)).toList();
+        rows = filteredData.map((commit) => _buildCommitRow(commit)).toList();
         break;
 
       case 'Committed Entries':
@@ -1367,7 +1557,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Title',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1377,7 +1571,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Sub Title',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1387,7 +1585,11 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.white,
                 )),
-          )),
+          ),
+          onSort: (col, asc) => _onSort(tabIndex, 2, asc, type),
+          numeric: false,
+          tooltip: 'Sort by Parish',
+          ),
           DataColumn(
               label: Container(
             padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
@@ -1399,14 +1601,46 @@ class _DetailsPageState extends State<DetailsPage>
                 )),
           )),
         ];
-        rows = _committedNewEntries
-            .map((entry) => _buildCommittedRow(entry))
+        rows = filteredData
+            .where((entry) => entry is Map)
+            .map((entry) => _buildCommittedRow(entry is Map<String, dynamic> ? entry : Map<String, dynamic>.from(entry as Map)))
             .toList();
         break;
     }
 
     return Column(
       children: [
+        // Search bar
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: TextField(
+            controller: searchController,
+            decoration: InputDecoration(
+              hintText: _getSearchPlaceholder(),
+              prefixIcon: Icon(Icons.search),
+              suffixIcon: searchQuery.isNotEmpty
+                  ? IconButton(
+                      icon: Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _searchQueries[tabIndex] = '';
+                          searchController.clear();
+                        });
+                      },
+                    )
+                  : null,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+            ),
+            onChanged: (value) {
+              setState(() {
+                _searchQueries[tabIndex] = value;
+              });
+            },
+          ),
+        ),
         // Bulk action controls
         if (_isSelectionMode) _buildBulkActionBar(type),
         // Data table
@@ -1449,6 +1683,8 @@ class _DetailsPageState extends State<DetailsPage>
                   fontSize: 14,
                   color: Colors.grey[800],
                 ),
+                sortColumnIndex: sortColumnIndex,
+                sortAscending: ascending,
               ),
             ),
           ),
@@ -1558,6 +1794,8 @@ class _DetailsPageState extends State<DetailsPage>
     }
   }
 
+  bool _isFetchingFollowUp = false;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1577,21 +1815,22 @@ class _DetailsPageState extends State<DetailsPage>
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: Icon(
-              _isSelectionMode ? Icons.close : Icons.checklist,
-              color: Colors.white,
+          if (!(_activityType == "Follow-up" && (_tabController?.index == 0)))
+            IconButton(
+              icon: Icon(
+                _isSelectionMode ? Icons.close : Icons.checklist,
+                color: Colors.white,
+              ),
+              onPressed: () {
+                setState(() {
+                  if (_isSelectionMode) {
+                    _clearAllSelections();
+                  } else {
+                    _isSelectionMode = true;
+                  }
+                });
+              },
             ),
-            onPressed: () {
-              setState(() {
-                if (_isSelectionMode) {
-                  _clearAllSelections();
-                } else {
-                  _isSelectionMode = true;
-                }
-              });
-            },
-          ),
         ],
         bottom: _activityType == "Follow-up"
             ? PreferredSize(
@@ -1659,13 +1898,14 @@ class _DetailsPageState extends State<DetailsPage>
                       ? _buildShimmerTable()
                       : _buildDataTable(
                           data: _committedNewEntries,
-                          type: 'Committed Entries'),
-                  _buildDataTable(data: _drafts, type: 'Drafts'),
-                  _buildDataTable(data: _commits, type: 'Commits'),
+                          type: 'Committed Entries',
+                          tabIndex: 0),
+                  _buildDataTable(data: _drafts, type: 'Drafts', tabIndex: 1),
+                  _buildDataTable(data: _commits, type: 'Commits', tabIndex: 2),
                 ]
               : [
-                  _buildDataTable(data: _drafts, type: 'Drafts'),
-                  _buildDataTable(data: _commits, type: 'Commits'),
+                  _buildDataTable(data: _drafts, type: 'Drafts', tabIndex: 0),
+                  _buildDataTable(data: _commits, type: 'Commits', tabIndex: 1),
                 ],
         ),
       ),
@@ -1688,19 +1928,71 @@ class _DetailsPageState extends State<DetailsPage>
               },
             )
           : FloatingActionButton(
-              tooltip: 'Follow Up',
+              tooltip: 'Fetch Follow Up Entries',
               backgroundColor: Colors.blueAccent,
-              child: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: () async {
-                final auth = Provider.of<AuthProvider>(context, listen: false);
-                final regionId = auth.regionId ?? '1';
-                await auth.apiService
-                    .fetchFollowUpEntriesFromApi(regionId, _formId!);
-                setState(() {
-                  _isLoadingEntries = true;
-                  _loadEntries().then((_) => _isLoadingEntries = false);
-                });
-              }),
+              child: _isFetchingFollowUp
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : const Icon(Icons.refresh, color: Colors.white),
+              onPressed: _isFetchingFollowUp
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isFetchingFollowUp = true;
+                      });
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (context) => AlertDialog(
+                          content: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const CircularProgressIndicator(),
+                              const SizedBox(width: 8),
+                              Text('Fetching entries', style: GoogleFonts.poppins()),
+                            ],
+                          ),
+                        ),
+                      );
+                      try {
+                        final auth = Provider.of<AuthProvider>(context, listen: false);
+                        final regionId = auth.regionId ?? '1';
+                        await auth.apiService.fetchFollowUpEntriesFromApi(regionId, _formId!);
+                        await _loadEntries();
+                        if (mounted) {
+                          Navigator.of(context).pop(); // Close dialog
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Fetched follow up entries successfully!', style: GoogleFonts.poppins()),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          Navigator.of(context).pop(); // Close dialog
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Failed to fetch follow up entries: $e', style: GoogleFonts.poppins()),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _isFetchingFollowUp = false;
+                          });
+                        }
+                      }
+                    },
+            ),
     );
   }
 }

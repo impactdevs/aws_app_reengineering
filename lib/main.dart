@@ -12,6 +12,8 @@ import 'providers/auth_provider.dart';
 import 'package:provider/provider.dart';
 import 'services/draft_service.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'screens/SplashScreen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -53,44 +55,65 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
+
+  Future<bool> _isOnboardingComplete() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool('onboarding_complete') ?? false;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        // Use system fonts as fallback
-        fontFamily: 'Roboto',
-        textTheme: TextTheme(
-          headlineLarge: TextStyle(fontFamily: 'Roboto'),
-          headlineMedium: TextStyle(fontFamily: 'Roboto'),
-          headlineSmall: TextStyle(fontFamily: 'Roboto'),
-          titleLarge: TextStyle(fontFamily: 'Roboto'),
-          titleMedium: TextStyle(fontFamily: 'Roboto'),
-          titleSmall: TextStyle(fontFamily: 'Roboto'),
-          bodyLarge: TextStyle(fontFamily: 'Roboto'),
-          bodyMedium: TextStyle(fontFamily: 'Roboto'),
-          bodySmall: TextStyle(fontFamily: 'Roboto'),
-          labelLarge: TextStyle(fontFamily: 'Roboto'),
-          labelMedium: TextStyle(fontFamily: 'Roboto'),
-          labelSmall: TextStyle(fontFamily: 'Roboto'),
-        ),
-      ),
-      routes: {
-        '/home_page': (context) => const HomePage(),
-        '/activity_page': (context) => ActivityPage(),
-        '/details_page': (context) => const DetailsPage(),
-        '/form_page': (context) => const DynamicFormPage(),
-        '/login': (context) => const LoginPage(),
+    return FutureBuilder<bool>(
+      future: _isOnboardingComplete(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const SizedBox(); // Or a splash/loading widget
+        }
+        if (!snapshot.data!) {
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            home: const OnboardingScreens(),
+          );
+        }
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            // Use system fonts as fallback
+            fontFamily: 'Roboto',
+            textTheme: TextTheme(
+              headlineLarge: TextStyle(fontFamily: 'Roboto'),
+              headlineMedium: TextStyle(fontFamily: 'Roboto'),
+              headlineSmall: TextStyle(fontFamily: 'Roboto'),
+              titleLarge: TextStyle(fontFamily: 'Roboto'),
+              titleMedium: TextStyle(fontFamily: 'Roboto'),
+              titleSmall: TextStyle(fontFamily: 'Roboto'),
+              bodyLarge: TextStyle(fontFamily: 'Roboto'),
+              bodyMedium: TextStyle(fontFamily: 'Roboto'),
+              bodySmall: TextStyle(fontFamily: 'Roboto'),
+              labelLarge: TextStyle(fontFamily: 'Roboto'),
+              labelMedium: TextStyle(fontFamily: 'Roboto'),
+              labelSmall: TextStyle(fontFamily: 'Roboto'),
+            ),
+          ),
+          routes: {
+            '/home_page': (context) => const HomePage(),
+            '/activity_page': (context) => ActivityPage(),
+            '/details_page': (context) => const DetailsPage(),
+            '/form_page': (context) => const DynamicFormPage(),
+            '/login': (context) => const LoginPage(),
+          },
+          home: Consumer<AuthProvider>(
+            builder: (ctx, auth, _) {
+              if (auth.user == null) {
+                return const LoginPage();
+              } else {
+                return const HomePage();
+              }
+            },
+          ),
+        );
       },
-      home: Consumer<AuthProvider>(
-        builder: (ctx, auth, _) {
-          if (auth.user == null) {
-            return const LoginPage();
-          } else {
-            return const HomePage();
-          }
-        },
-      ),
     );
   }
 }
+

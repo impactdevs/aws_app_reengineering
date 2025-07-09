@@ -16,9 +16,13 @@ class ErrorHandler {
           String errorMessage = 'Login failed';
 
           if (responseData is Map<String, dynamic>) {
-            errorMessage = responseData['message'] ??
-                responseData['error'] ??
-                errorMessage;
+            if (responseData['messages'] != null && responseData['messages']['error'] != null) {
+              errorMessage = responseData['messages']['error'];
+            } else if (responseData['message'] != null) {
+              errorMessage = responseData['message'];
+            } else if (responseData['error'] != null) {
+              errorMessage = responseData['error'].toString();
+            }
           }
 
           switch (statusCode) {
@@ -60,7 +64,7 @@ class ErrorHandler {
         return 'Login failed. Please try again or contact support if the problem persists.';
       }
     } else {
-      return 'An unexpected error occurred. Please try again.';
+      return 'An unexpected error occurred. Please try again. here';
     }
   }
 

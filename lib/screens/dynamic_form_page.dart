@@ -239,6 +239,44 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       if (responses['photo'] != "null" && responses['photo'] != null) {
         _answers['photo'] = responses['photo'];
       }
+
+      // Decode area fields (name -> id) for dropdown prefill
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      final userRegionData = auth.userRegionData;
+      if (_formData != null && userRegionData != null) {
+        final questionList = _formData!['question_list'] as List<dynamic>?;
+        if (questionList != null) {
+          for (final question in questionList) {
+            if (question['answer_type'] == 'app_list') {
+              final answerValues = question['answer_values'];
+              final dbTable = answerValues['db_table'];
+              String? areaType;
+              String? idField;
+              if (dbTable == 'app_district') { areaType = 'district'; idField = 'district_id'; }
+              if (dbTable == 'app_sub_county') { areaType = 'sub_county'; idField = 'sub_county_id'; }
+              if (dbTable == 'app_parish') { areaType = 'parish'; idField = 'parish_id'; }
+              if (dbTable == 'app_village') { areaType = 'village'; idField = 'village_id'; }
+              if (dbTable == 'region') { areaType = 'region'; idField = 'region_id'; }
+              if (areaType != null && idField != null) {
+                final qnKey = 'qn${question['question_id']}';
+                final areaName = _answers[qnKey]?.toString();
+                if (areaName != null && areaName.isNotEmpty) {
+                  final list = userRegionData[dbTable] as List<dynamic>?;
+                  if (list != null) {
+                    final match = list.firstWhere(
+                      (item) => (item['name']?.toString() ?? '') == areaName,
+                      orElse: () => null,
+                    );
+                    if (match != null && match[idField] != null) {
+                      _answers[qnKey] = match[idField].toString();
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     });
   }
 
@@ -375,7 +413,12 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     final args =
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final activityType = args?['activity_type'] as String? ?? 'Baseline';
-    final responseId = auth.generateResponseId(regionCode, int.parse(userId));
+    String responseId;
+    if (activityType == "Follow-up" && args != null && args['response_id'] != null) {
+      responseId = args['response_id'].toString();
+    } else {
+      responseId = auth.generateResponseId(regionCode, int.parse(userId));
+    }
 
     //update the responses for the keys that are in _areadData
     if (_areaData.isNotEmpty) {
@@ -1271,50 +1314,69 @@ class _DynamicFormPageState extends State<DynamicFormPage>
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Row(
-            children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _isPaused ? null : _saveDraft,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.grey[600],
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: Text(
-                    'Save Draft',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
+          child: SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _isPaused
+                  ? null
+                  : () async {
+                      showModalBottomSheet(
+                        context: context,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                        ),
+                        builder: (context) {
+                          return SafeArea(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                ListTile(
+                                  leading: const Icon(Icons.done_all),
+                                  title: Text('Commit', style: GoogleFonts.poppins()),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _submitForm();
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.save_alt),
+                                  title: Text('Save and Commit', style: GoogleFonts.poppins()),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _saveDraft();
+                                    await _submitForm();
+                                  },
+                                ),
+                                ListTile(
+                                  leading: const Icon(Icons.save),
+                                  title: Text('Save as Draft', style: GoogleFonts.poppins()),
+                                  onTap: () async {
+                                    Navigator.pop(context);
+                                    await _saveDraft();
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blueAccent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: Text(
+                'Submit',
+                style: GoogleFonts.poppins(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: _isPaused ? null : _submitForm,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                  ),
-                  child: Text(
-                    'Submit',
-                    style: GoogleFonts.poppins(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
         ),
       ),
