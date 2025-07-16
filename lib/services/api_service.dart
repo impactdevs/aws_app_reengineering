@@ -177,6 +177,7 @@ class ApiService {
   Future<List<dynamic>> fetchForms() async {
     try {
       final forms = await offlineStorage.getForms();
+      
       if (forms != null) {
         return forms;
       } else {
