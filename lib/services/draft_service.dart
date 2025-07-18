@@ -1,8 +1,5 @@
-import 'dart:developer';
-
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/draft_model.dart';
-import '../utils/font_helper.dart';
 
 class DraftService {
   static const String _boxName = 'drafts';

@@ -31,14 +31,17 @@ class _DynamicFormPageState extends State<DynamicFormPage>
   late AnimationController _fadeController;
   late Animation<double> _fadeAnimation;
   bool _isPaused = false;
-  Map<String, dynamic> _areaData = {};
-  final PageStorageKey _scrollKey = PageStorageKey('formScrollKey');
+  final Map<String, dynamic> _areaData = {};
+  final PageStorageKey _scrollKey = const PageStorageKey('formScrollKey');
 
   // Cache for form questions to avoid repeated processing
   List<dynamic>? _cachedQuestions;
 
   // Track the current draft being edited (if any)
   DraftModel? _currentDraft;
+
+  // Add conditional logic support
+  Map<String, dynamic>? _conditionalLogic;
 
   @override
   void initState() {
@@ -106,8 +109,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     final activityType = args['activity_type'] as String? ?? 'Baseline';
     if (formId == null) return;
 
-    final draft =
-        await _draftService.getDraft(formId, activityType, DateTime.now());
+    final draft = _draftService.getDraft(formId, activityType, DateTime.now());
     if (draft != null && mounted) {
       setState(() {
         _loadDraftFromModel(draft);
@@ -252,11 +254,26 @@ class _DynamicFormPageState extends State<DynamicFormPage>
               final dbTable = answerValues['db_table'];
               String? areaType;
               String? idField;
-              if (dbTable == 'app_district') { areaType = 'district'; idField = 'district_id'; }
-              if (dbTable == 'app_sub_county') { areaType = 'sub_county'; idField = 'sub_county_id'; }
-              if (dbTable == 'app_parish') { areaType = 'parish'; idField = 'parish_id'; }
-              if (dbTable == 'app_village') { areaType = 'village'; idField = 'village_id'; }
-              if (dbTable == 'region') { areaType = 'region'; idField = 'region_id'; }
+              if (dbTable == 'app_district') {
+                areaType = 'district';
+                idField = 'district_id';
+              }
+              if (dbTable == 'app_sub_county') {
+                areaType = 'sub_county';
+                idField = 'sub_county_id';
+              }
+              if (dbTable == 'app_parish') {
+                areaType = 'parish';
+                idField = 'parish_id';
+              }
+              if (dbTable == 'app_village') {
+                areaType = 'village';
+                idField = 'village_id';
+              }
+              if (dbTable == 'region') {
+                areaType = 'region';
+                idField = 'region_id';
+              }
               if (areaType != null && idField != null) {
                 final qnKey = 'qn${question['question_id']}';
                 final areaName = _answers[qnKey]?.toString();
@@ -296,7 +313,171 @@ class _DynamicFormPageState extends State<DynamicFormPage>
 
     if (form != null) {
       _formData = form;
+      // Parse conditional logic if present
+      _parseConditionalLogic();
     }
+  }
+
+  /// Parse and store conditional logic from form data
+  void _parseConditionalLogic() {
+    if (_formData != null && _formData!['conditional_logic'] != null) {
+      _conditionalLogic =
+          Map<String, dynamic>.from(_formData!['conditional_logic']);
+      debugPrint('Loaded conditional logic:');
+      debugPrint(jsonEncode(_conditionalLogic));
+    } else {
+      debugPrint('No conditional logic found in form data.');
+      _conditionalLogic = null;
+    }
+  }
+
+  /// Check if a question has conditional logic that should be triggered
+  bool _hasConditionalLogic(String questionKey) {
+    return _conditionalLogic?.containsKey(questionKey) ?? false;
+  }
+
+  /// Apply conditional logic when a trigger question value changes
+  void _applyConditionalLogic(
+      String triggerQuestionKey, dynamic selectedValue) {
+    debugPrint('Conditional logic: ${jsonEncode(_conditionalLogic)}');
+    debugPrint('Trigger: $triggerQuestionKey, Value: $selectedValue');
+    if (!_hasConditionalLogic(triggerQuestionKey) || selectedValue == null) {
+      debugPrint('No conditional logic for this trigger.');
+      return;
+    }
+
+    // Safely convert to Map<String, dynamic>
+    final rawConditionalRules = _conditionalLogic![triggerQuestionKey];
+    final conditionalRules =
+        (rawConditionalRules as Map).map((k, v) => MapEntry(k.toString(), v));
+
+    final selectedValueString = selectedValue.toString();
+    final rawRule = conditionalRules[selectedValueString];
+    final rule = rawRule is Map
+        ? rawRule.map((k, v) => MapEntry(k.toString(), v))
+        : null;
+
+    if (rule != null && rule['prefill'] != null) {
+      final rawPrefillData = rule['prefill'];
+      final prefillData =
+          (rawPrefillData as Map).map((k, v) => MapEntry(k.toString(), v));
+      debugPrint('Prefill data: ${jsonEncode(prefillData)}');
+      setState(() {
+        prefillData.forEach((questionKey, prefillValue) {
+          // Detect if this is a checkbox question
+          final question = _questions.firstWhere(
+            (q) => 'qn${q['question_id']}' == questionKey,
+            orElse: () => null,
+          );
+          if (question != null && question['answer_type'] == 'checkbox') {
+            // If prefillValue is not a list, wrap it in a list
+            if (prefillValue is List) {
+              _answers[questionKey] = prefillValue;
+            } else if (prefillValue != null &&
+                prefillValue.toString().isNotEmpty) {
+              _answers[questionKey] = [prefillValue];
+            } else {
+              _answers[questionKey] = [];
+            }
+          } else {
+            _answers[questionKey] = prefillValue;
+            if (_controllers.containsKey(questionKey)) {
+              _controllers[questionKey]!.text = prefillValue.toString();
+            }
+          }
+          debugPrint(
+              'Prefilling $questionKey with value: ${_answers[questionKey]}');
+        });
+        debugPrint('Answers after prefill: ${jsonEncode(_answers)}');
+      });
+      if (mounted && prefillData.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Some fields have been automatically filled based on your selection',
+              style: GoogleFonts.poppins(fontSize: 14),
+            ),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.blueAccent.withOpacity(0.8),
+          ),
+        );
+      }
+    } else {
+      debugPrint('No prefill rule for this value.');
+    }
+  }
+
+  /// Get questions that are affected by conditional logic
+  List<String> _getAffectedQuestions(
+      String triggerQuestionKey, dynamic selectedValue) {
+    if (!_hasConditionalLogic(triggerQuestionKey) || selectedValue == null) {
+      return [];
+    }
+
+    final conditionalRules =
+        _conditionalLogic![triggerQuestionKey] as Map<String, dynamic>?;
+    if (conditionalRules == null) return [];
+
+    final selectedValueString = selectedValue.toString();
+    final rule = conditionalRules[selectedValueString] as Map<String, dynamic>?;
+
+    if (rule != null && rule['prefill'] != null) {
+      final prefillData = rule['prefill'] as Map<String, dynamic>;
+      return prefillData.keys.toList();
+    }
+
+    return [];
+  }
+
+  /// Check if a field has been auto-filled by conditional logic
+  bool _isFieldAutoFilled(String questionKey) {
+    // Check if this field was recently modified by conditional logic
+    // You can enhance this by maintaining a separate set of auto-filled fields
+    return false; // Simple implementation for now
+  }
+
+  /// Create a styled container for conditionally filled fields
+  Widget _buildConditionalFieldContainer({
+    required Widget child,
+    required String questionKey,
+    bool isAutoFilled = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: isAutoFilled
+            ? Border.all(color: Colors.orange.withOpacity(0.5), width: 2)
+            : null,
+        color: isAutoFilled ? Colors.orange.withOpacity(0.05) : null,
+      ),
+      child: Column(
+        children: [
+          if (isAutoFilled)
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 12, right: 12),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.auto_fix_high,
+                    size: 16,
+                    color: Colors.orange.shade600,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Auto-filled',
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: Colors.orange.shade600,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          child,
+        ],
+      ),
+    );
   }
 
   List<dynamic> get _questions {
@@ -414,7 +595,9 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
     final activityType = args?['activity_type'] as String? ?? 'Baseline';
     String responseId;
-    if (activityType == "Follow-up" && args != null && args['response_id'] != null) {
+    if (activityType == "Follow-up" &&
+        args != null &&
+        args['response_id'] != null) {
       responseId = args['response_id'].toString();
     } else {
       responseId = auth.generateResponseId(regionCode, int.parse(userId));
@@ -574,6 +757,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                   setState(() {
                     _answers[key] = val;
                   });
+                  // Apply conditional logic if this text field triggers any
+                  _applyConditionalLogic(key, val);
                 },
         ),
         const SizedBox(height: 20),
@@ -615,6 +800,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                   setState(() {
                     _answers[key] = val;
                   });
+                  // Apply conditional logic if this number field triggers any
+                  _applyConditionalLogic(key, val);
                 },
         ),
         const SizedBox(height: 20),
@@ -643,9 +830,11 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                     setState(() {
                       _answers[key] = val;
                     });
+                    // Apply conditional logic if this question triggers any
+                    _applyConditionalLogic(key, val);
                   },
           );
-        }).toList(),
+        }),
         const SizedBox(height: 20),
       ],
     );
@@ -653,7 +842,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
 
   Widget _buildCheckboxGroup(
       String key, String label, List<dynamic> optionsList) {
-    List<dynamic> currentValues = _answers[key] is List ? _answers[key] : [];
+    List<dynamic> currentValues =
+        _answers[key] is List ? _answers[key] : <dynamic>[];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -677,9 +867,11 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                       }
                       _answers[key] = currentValues;
                     });
+                    // Apply conditional logic for checkbox selections
+                    _applyConditionalLogic(key, currentValues);
                   },
           );
-        }).toList(),
+        }),
         const SizedBox(height: 20),
       ],
     );
@@ -712,7 +904,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                             surface: Colors.white,
                             onSurface: Colors.black87,
                           ),
-                          dialogBackgroundColor: Colors.white,
                           textButtonTheme: TextButtonThemeData(
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.blueAccent,
@@ -785,7 +976,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
 
   Widget _buildAppListDropdown(String key, String label, dynamic answerValues,
       {String? filterBy, String? parentValue}) {
-    final dbTable = answerValues?['db_table']?.toString() ?? '';
+    final String dbTable = answerValues?['db_table']?.toString() ?? '';
     final auth = Provider.of<AuthProvider>(context, listen: false);
     List<dynamic> items = [];
 
@@ -811,7 +1002,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
           .toList();
     }
 
-    final Map<String, String> defaultValueFields = {
+    final Map<String, String> defaultValueFields = <String, String>{
       'app_district': 'district_id',
       'app_sub_county': 'sub_county_id',
       'app_parish': 'parish_id',
@@ -825,8 +1016,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         defaultValueFields[dbTable] ??
         filterBy ??
         'id';
-
-    List<DropdownMenuItem<String>> dropdownItems = items.map((e) {
+    List<DropdownMenuItem<String>> dropdownItems =
+        items.map<DropdownMenuItem<String>>((e) {
       final String value = e[valueField]?.toString() ?? '';
       final String optionLabel = e['name'].toString();
       return DropdownMenuItem<String>(
@@ -837,7 +1028,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         ),
       );
     }).toList();
-
     String? currentValue = _answers[key]?.toString();
     if (currentValue != null &&
         !dropdownItems.any((item) => item.value == currentValue)) {
@@ -869,6 +1059,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                     setState(() {
                       _answers[key] = val;
                     });
+                    // Apply conditional logic if this dropdown triggers any
+                    _applyConditionalLogic(key, val);
                   },
             decoration: const InputDecoration(
               border: InputBorder.none,
@@ -1323,7 +1515,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                       showModalBottomSheet(
                         context: context,
                         shape: const RoundedRectangleBorder(
-                          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                          borderRadius:
+                              BorderRadius.vertical(top: Radius.circular(20)),
                         ),
                         builder: (context) {
                           return SafeArea(
@@ -1332,7 +1525,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                               children: [
                                 ListTile(
                                   leading: const Icon(Icons.done_all),
-                                  title: Text('Commit', style: GoogleFonts.poppins()),
+                                  title: Text('Commit',
+                                      style: GoogleFonts.poppins()),
                                   onTap: () async {
                                     Navigator.pop(context);
                                     await _submitForm();
@@ -1340,7 +1534,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.save_alt),
-                                  title: Text('Save and Commit', style: GoogleFonts.poppins()),
+                                  title: Text('Save and Commit',
+                                      style: GoogleFonts.poppins()),
                                   onTap: () async {
                                     Navigator.pop(context);
                                     await _saveDraft();
@@ -1349,7 +1544,8 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                                 ),
                                 ListTile(
                                   leading: const Icon(Icons.save),
-                                  title: Text('Save as Draft', style: GoogleFonts.poppins()),
+                                  title: Text('Save as Draft',
+                                      style: GoogleFonts.poppins()),
                                   onTap: () async {
                                     Navigator.pop(context);
                                     await _saveDraft();
