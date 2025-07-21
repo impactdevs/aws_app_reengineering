@@ -4,8 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
 import '../services/commit_service.dart';
-import '../utils/error_handler.dart';
-import 'package:dio/dio.dart';
 
 class AuthProvider extends ChangeNotifier {
   final ApiService _apiService = ApiService(); // TODO: remove this

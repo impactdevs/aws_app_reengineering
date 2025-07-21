@@ -38,7 +38,7 @@ void main() async {
     commitService.init(),
     offlineStorage.init(),
   ]);
-  
+
   // Set the initialized CommitService in AuthProvider
   authProvider.setCommitService(commitService);
   runApp(
@@ -70,9 +70,9 @@ class MyApp extends StatelessWidget {
           return const SizedBox(); // Or a splash/loading widget
         }
         if (!snapshot.data!) {
-          return MaterialApp(
+          return const MaterialApp(
             debugShowCheckedModeBanner: false,
-            home: const OnboardingScreens(),
+            home: OnboardingScreens(),
           );
         }
         return MaterialApp(
@@ -80,7 +80,7 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             // Use system fonts as fallback
             fontFamily: 'Roboto',
-            textTheme: TextTheme(
+            textTheme: const TextTheme(
               headlineLarge: TextStyle(fontFamily: 'Roboto'),
               headlineMedium: TextStyle(fontFamily: 'Roboto'),
               headlineSmall: TextStyle(fontFamily: 'Roboto'),
@@ -116,4 +116,3 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-

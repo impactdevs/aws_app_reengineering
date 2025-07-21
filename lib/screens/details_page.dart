@@ -57,7 +57,7 @@ String? getAreaNameFromRegionData({
 }
 
 class DetailsPage extends StatefulWidget {
-  const DetailsPage({Key? key}) : super(key: key);
+  const DetailsPage({super.key});
 
   @override
   State<DetailsPage> createState() => _DetailsPageState();
@@ -81,9 +81,9 @@ class _DetailsPageState extends State<DetailsPage>
       GlobalKey<RefreshIndicatorState>();
 
   // Bulk selection state
-  Set<String> _selectedDrafts = {};
-  Set<String> _selectedCommits = {};
-  Set<String> _selectedEntries = {};
+  final Set<String> _selectedDrafts = {};
+  final Set<String> _selectedCommits = {};
+  final Set<String> _selectedEntries = {};
   bool _isSelectionMode = false;
 
   // Search state for each tab
@@ -716,7 +716,7 @@ class _DetailsPageState extends State<DetailsPage>
           break;
         }
       }
-      if (formData != null && formData is Map<String, dynamic>) {
+      if (formData != null) {
         final questionList = formData['question_list'] as List<dynamic>?;
         if (questionList != null) {
           for (final question in questionList) {
@@ -782,7 +782,7 @@ class _DetailsPageState extends State<DetailsPage>
           break;
         }
       }
-      if (formData != null && formData is Map<String, dynamic>) {
+      if (formData != null) {
         final dynamicTitle =
             _getDynamicTitle(formData, finalAnswers, draft.title);
         final dynamicSubTitle = _getDynamicSubTitle(formData, finalAnswers,
@@ -1075,7 +1075,7 @@ class _DetailsPageState extends State<DetailsPage>
               children: [
                 if (!_isSelectionMode)
                   PopupMenuButton<String>(
-                    icon: Icon(Icons.more_vert),
+                    icon: const Icon(Icons.more_vert),
                     onSelected: (value) {
                       if (value == 'edit') {
                         _editCommit(commit);
@@ -1090,7 +1090,8 @@ class _DetailsPageState extends State<DetailsPage>
                       ),
                       PopupMenuItem(
                         value: 'delete',
-                        child: Text('Delete', style: GoogleFonts.poppins(color: Colors.red)),
+                        child: Text('Delete',
+                            style: GoogleFonts.poppins(color: Colors.red)),
                       ),
                     ],
                   ),
@@ -1109,7 +1110,8 @@ class _DetailsPageState extends State<DetailsPage>
     final isSelected = _selectedEntries.contains(_getEntryKey(entry));
 
     // Determine if we are in Follow-up, NEW tab
-    final bool showFollowUpAction = _activityType == "Follow-up" && (_tabController?.index == 0);
+    final bool showFollowUpAction =
+        _activityType == "Follow-up" && (_tabController?.index == 0);
 
     return DataRow(
       cells: [
@@ -1172,7 +1174,8 @@ class _DetailsPageState extends State<DetailsPage>
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: IconButton(
-                      icon: const Icon(Icons.playlist_add_check, size: 18, color: Colors.blue),
+                      icon: const Icon(Icons.playlist_add_check,
+                          size: 18, color: Colors.blue),
                       onPressed: () {
                         Navigator.pushNamed(
                           context,
@@ -1320,7 +1323,10 @@ class _DetailsPageState extends State<DetailsPage>
     });
   }
 
-  Widget _buildDataTable({required List<dynamic> data, required String type, required int tabIndex}) {
+  Widget _buildDataTable(
+      {required List<dynamic> data,
+      required String type,
+      required int tabIndex}) {
     // Use the search query/controller for the current tab
     final searchQuery = _searchQueries[tabIndex];
     final searchController = _searchControllers[tabIndex];
@@ -1344,11 +1350,15 @@ class _DetailsPageState extends State<DetailsPage>
           break;
         case 'Committed Entries':
           filteredData = _committedNewEntries.where((entry) {
-            final map = entry is Map<String, dynamic> ? entry : Map<String, dynamic>.from(entry as Map);
+            final map = entry is Map<String, dynamic>
+                ? entry
+                : Map<String, dynamic>.from(entry as Map);
             final title = (map['title']?.toString() ?? '').toLowerCase();
             final subTitle = (map['sub_title']?.toString() ?? '').toLowerCase();
             final parish = (map['parish']?.toString() ?? '').toLowerCase();
-            return title.contains(query) || subTitle.contains(query) || parish.contains(query);
+            return title.contains(query) ||
+                subTitle.contains(query) ||
+                parish.contains(query);
           }).toList();
           break;
       }
@@ -1364,13 +1374,17 @@ class _DetailsPageState extends State<DetailsPage>
             filteredData.sort((a, b) {
               final aTitle = _getDraftTitle(a).toLowerCase();
               final bTitle = _getDraftTitle(b).toLowerCase();
-              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+              return ascending
+                  ? aTitle.compareTo(bTitle)
+                  : bTitle.compareTo(aTitle);
             });
           } else if (sortColumnIndex == 1) {
             filteredData.sort((a, b) {
               final aArea = _getAreaForDraft(a).toLowerCase();
               final bArea = _getAreaForDraft(b).toLowerCase();
-              return ascending ? aArea.compareTo(bArea) : bArea.compareTo(aArea);
+              return ascending
+                  ? aArea.compareTo(bArea)
+                  : bArea.compareTo(aArea);
             });
           }
           break;
@@ -1379,43 +1393,63 @@ class _DetailsPageState extends State<DetailsPage>
             filteredData.sort((a, b) {
               final aTitle = _getDynamicTitleForCommit(a).toLowerCase();
               final bTitle = _getDynamicTitleForCommit(b).toLowerCase();
-              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+              return ascending
+                  ? aTitle.compareTo(bTitle)
+                  : bTitle.compareTo(aTitle);
             });
           } else if (sortColumnIndex == 1) {
             filteredData.sort((a, b) {
               final aStatus = a.status.toLowerCase();
               final bStatus = b.status.toLowerCase();
-              return ascending ? aStatus.compareTo(bStatus) : bStatus.compareTo(aStatus);
+              return ascending
+                  ? aStatus.compareTo(bStatus)
+                  : bStatus.compareTo(aStatus);
             });
           }
           break;
         case 'Committed Entries':
           if (sortColumnIndex == 0) {
-            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData = filteredData.whereType<Map>().toList();
             filteredData.sort((a, b) {
-              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
-              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aMap = a is Map<String, dynamic>
+                  ? a
+                  : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic>
+                  ? b
+                  : Map<String, dynamic>.from(b as Map);
               final aTitle = (aMap['title']?.toString() ?? '').toLowerCase();
               final bTitle = (bMap['title']?.toString() ?? '').toLowerCase();
-              return ascending ? aTitle.compareTo(bTitle) : bTitle.compareTo(aTitle);
+              return ascending
+                  ? aTitle.compareTo(bTitle)
+                  : bTitle.compareTo(aTitle);
             });
           } else if (sortColumnIndex == 1) {
-            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData = filteredData.whereType<Map>().toList();
             filteredData.sort((a, b) {
-              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
-              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aMap = a is Map<String, dynamic>
+                  ? a
+                  : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic>
+                  ? b
+                  : Map<String, dynamic>.from(b as Map);
               final aSub = (aMap['sub_title']?.toString() ?? '').toLowerCase();
               final bSub = (bMap['sub_title']?.toString() ?? '').toLowerCase();
               return ascending ? aSub.compareTo(bSub) : bSub.compareTo(aSub);
             });
           } else if (sortColumnIndex == 2) {
-            filteredData = filteredData.where((entry) => entry is Map).toList();
+            filteredData = filteredData.whereType<Map>().toList();
             filteredData.sort((a, b) {
-              final aMap = a is Map<String, dynamic> ? a : Map<String, dynamic>.from(a as Map);
-              final bMap = b is Map<String, dynamic> ? b : Map<String, dynamic>.from(b as Map);
+              final aMap = a is Map<String, dynamic>
+                  ? a
+                  : Map<String, dynamic>.from(a as Map);
+              final bMap = b is Map<String, dynamic>
+                  ? b
+                  : Map<String, dynamic>.from(b as Map);
               final aParish = (aMap['parish']?.toString() ?? '').toLowerCase();
               final bParish = (bMap['parish']?.toString() ?? '').toLowerCase();
-              return ascending ? aParish.compareTo(bParish) : bParish.compareTo(aParish);
+              return ascending
+                  ? aParish.compareTo(bParish)
+                  : bParish.compareTo(aParish);
             });
           }
           break;
@@ -1461,32 +1495,32 @@ class _DetailsPageState extends State<DetailsPage>
       case 'Drafts':
         columns = [
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Title',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Title',
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Title',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Title',
           ),
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Subtitle',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Subtitle',
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Subtitle',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Subtitle',
           ),
           DataColumn(
               label: Container(
@@ -1505,32 +1539,32 @@ class _DetailsPageState extends State<DetailsPage>
       case 'Commits':
         columns = [
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Title',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Title',
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Title',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Title',
           ),
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Status',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Status',
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Status',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Status',
           ),
           DataColumn(
               label: Container(
@@ -1549,46 +1583,46 @@ class _DetailsPageState extends State<DetailsPage>
       case 'Committed Entries':
         columns = [
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Title',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Title',
-          ),
-          DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Sub Title',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
-          ),
-          onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Sub Title',
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Title',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 0, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Title',
           ),
           DataColumn(
-              label: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
-            child: Text('Parish',
-                style: GoogleFonts.poppins(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
-                  color: Colors.white,
-                )),
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Sub Title',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 1, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Sub Title',
           ),
-          onSort: (col, asc) => _onSort(tabIndex, 2, asc, type),
-          numeric: false,
-          tooltip: 'Sort by Parish',
+          DataColumn(
+            label: Container(
+              padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Text('Parish',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 14,
+                    color: Colors.white,
+                  )),
+            ),
+            onSort: (col, asc) => _onSort(tabIndex, 2, asc, type),
+            numeric: false,
+            tooltip: 'Sort by Parish',
           ),
           DataColumn(
               label: Container(
@@ -1602,8 +1636,10 @@ class _DetailsPageState extends State<DetailsPage>
           )),
         ];
         rows = filteredData
-            .where((entry) => entry is Map)
-            .map((entry) => _buildCommittedRow(entry is Map<String, dynamic> ? entry : Map<String, dynamic>.from(entry as Map)))
+            .whereType<Map>()
+            .map((entry) => _buildCommittedRow(entry is Map<String, dynamic>
+                ? entry
+                : Map<String, dynamic>.from(entry as Map)))
             .toList();
         break;
     }
@@ -1617,10 +1653,10 @@ class _DetailsPageState extends State<DetailsPage>
             controller: searchController,
             decoration: InputDecoration(
               hintText: _getSearchPlaceholder(),
-              prefixIcon: Icon(Icons.search),
+              prefixIcon: const Icon(Icons.search),
               suffixIcon: searchQuery.isNotEmpty
                   ? IconButton(
-                      icon: Icon(Icons.clear),
+                      icon: const Icon(Icons.clear),
                       onPressed: () {
                         setState(() {
                           _searchQueries[tabIndex] = '';
@@ -1632,7 +1668,8 @@ class _DetailsPageState extends State<DetailsPage>
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
+              contentPadding:
+                  const EdgeInsets.symmetric(vertical: 0, horizontal: 16),
             ),
             onChanged: (value) {
               setState(() {
@@ -1670,10 +1707,10 @@ class _DetailsPageState extends State<DetailsPage>
                   width: 1,
                   borderRadius: BorderRadius.circular(8),
                 ),
-                headingRowColor: MaterialStateProperty.all(Colors.blue[700]),
-                dataRowColor: MaterialStateProperty.resolveWith<Color?>(
-                  (Set<MaterialState> states) {
-                    if (states.contains(MaterialState.selected)) {
+                headingRowColor: WidgetStateProperty.all(Colors.blue[700]),
+                dataRowColor: WidgetStateProperty.resolveWith<Color?>(
+                  (Set<WidgetState> states) {
+                    if (states.contains(WidgetState.selected)) {
                       return Colors.blue[50];
                     }
                     return null;
@@ -1930,16 +1967,6 @@ class _DetailsPageState extends State<DetailsPage>
           : FloatingActionButton(
               tooltip: 'Fetch Follow Up Entries',
               backgroundColor: Colors.blueAccent,
-              child: _isFetchingFollowUp
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        strokeWidth: 3,
-                      ),
-                    )
-                  : const Icon(Icons.refresh, color: Colors.white),
               onPressed: _isFetchingFollowUp
                   ? null
                   : () async {
@@ -1955,21 +1982,26 @@ class _DetailsPageState extends State<DetailsPage>
                             children: [
                               const CircularProgressIndicator(),
                               const SizedBox(width: 8),
-                              Text('Fetching entries', style: GoogleFonts.poppins()),
+                              Text('Fetching entries',
+                                  style: GoogleFonts.poppins()),
                             ],
                           ),
                         ),
                       );
                       try {
-                        final auth = Provider.of<AuthProvider>(context, listen: false);
+                        final auth =
+                            Provider.of<AuthProvider>(context, listen: false);
                         final regionId = auth.regionId ?? '1';
-                        await auth.apiService.fetchFollowUpEntriesFromApi(regionId, _formId!);
+                        await auth.apiService
+                            .fetchFollowUpEntriesFromApi(regionId, _formId!);
                         await _loadEntries();
                         if (mounted) {
                           Navigator.of(context).pop(); // Close dialog
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Fetched follow up entries successfully!', style: GoogleFonts.poppins()),
+                              content: Text(
+                                  'Fetched follow up entries successfully!',
+                                  style: GoogleFonts.poppins()),
                               backgroundColor: Colors.green,
                             ),
                           );
@@ -1979,7 +2011,9 @@ class _DetailsPageState extends State<DetailsPage>
                           Navigator.of(context).pop(); // Close dialog
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
-                              content: Text('Failed to fetch follow up entries: $e', style: GoogleFonts.poppins()),
+                              content: Text(
+                                  'Failed to fetch follow up entries: $e',
+                                  style: GoogleFonts.poppins()),
                               backgroundColor: Colors.red,
                             ),
                           );
@@ -1992,6 +2026,16 @@ class _DetailsPageState extends State<DetailsPage>
                         }
                       }
                     },
+              child: _isFetchingFollowUp
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        strokeWidth: 3,
+                      ),
+                    )
+                  : const Icon(Icons.refresh, color: Colors.white),
             ),
     );
   }
