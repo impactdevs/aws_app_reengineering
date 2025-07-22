@@ -1285,7 +1285,7 @@ class _DetailsPageState extends State<DetailsPage>
           TextButton(
             onPressed: () {
               if (_formId != null && _activityType != null) {
-                _commitService.deleteCommit(
+                _draftService.deleteDraft(
                     commit.formId, _activityType!, commit.timestamp);
                 Navigator.pop(context);
                 _loadCommits();

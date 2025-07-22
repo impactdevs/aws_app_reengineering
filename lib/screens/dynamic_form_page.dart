@@ -390,18 +390,19 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         });
         debugPrint('Answers after prefill: ${jsonEncode(_answers)}');
       });
-      if (mounted && prefillData.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Some fields have been automatically filled based on your selection',
-              style: GoogleFonts.poppins(fontSize: 14),
-            ),
-            duration: const Duration(seconds: 2),
-            backgroundColor: Colors.blueAccent.withOpacity(0.8),
-          ),
-        );
-      }
+      // Notification disabled - conditional logic prefilling now happens silently
+      // if (mounted && prefillData.isNotEmpty) {
+      //   ScaffoldMessenger.of(context).showSnackBar(
+      //     SnackBar(
+      //       content: Text(
+      //         'Some fields have been automatically filled based on your selection',
+      //         style: GoogleFonts.poppins(fontSize: 14),
+      //       ),
+      //       duration: const Duration(seconds: 2),
+      //       backgroundColor: Colors.blueAccent.withOpacity(0.8),
+      //     ),
+      //   );
+      // }
     } else {
       debugPrint('No prefill rule for this value.');
     }
@@ -683,22 +684,89 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) {
-        final userFriendlyError = ErrorHandler.getFormSubmissionErrorMessage(e);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(userFriendlyError),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 6),
-            action: SnackBarAction(
-              label: 'Dismiss',
-              textColor: Colors.white,
-              onPressed: () {
-                ScaffoldMessenger.of(context).hideCurrentSnackBar();
-              },
+      // Check if it's a network error - if so, auto-save as draft
+      if (ErrorHandler.isNetworkError(e) || ErrorHandler.isServerError(e)) {
+        try {
+          // Create draft with submission-ready data
+          Map<String, String> imageMap = {};
+          for (var entry in _images.entries) {
+            if (entry.value != null) {
+              final bytes = await File(entry.value!.path).readAsBytes();
+              imageMap[entry.key] = base64Encode(bytes);
+            }
+          }
+          
+          // Add activity type to answers
+          final submissionAnswers = Map<String, dynamic>.from(_answers);
+          submissionAnswers['entity_type'] = activityType;
+          submissionAnswers['response_id'] = responseId;
+          submissionAnswers['creator_id'] = userId;
+          submissionAnswers['created_at'] = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
+          
+          final draft = DraftModel(
+            formId: formId,
+            title: formTitle,
+            answers: submissionAnswers,
+            images: imageMap,
+            timestamp: DateTime.now(),
+            status: 'pending_submit', // Different status to indicate it was ready for submission
+          );
+          
+          // Save as draft
+          if (_currentDraft != null) {
+            await _draftService.updateDraft(draft, activityType);
+          } else {
+            await _draftService.saveDraft(draft, activityType);
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: const Text('No internet connection. Entry saved as draft and will be submitted when online.'),
+                backgroundColor: Colors.orange,
+                duration: const Duration(seconds: 5),
+                action: SnackBarAction(
+                  label: 'OK',
+                  textColor: Colors.white,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  },
+                ),
+              ),
+            );
+            Navigator.of(context).pop(); // Return to previous screen
+          }
+        } catch (draftError) {
+          // If even saving as draft fails, show error
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('Failed to save entry: ${draftError.toString()}'),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 6),
+              ),
+            );
+          }
+        }
+      } else {
+        // For non-network errors, show the original error handling
+        if (mounted) {
+          final userFriendlyError = ErrorHandler.getFormSubmissionErrorMessage(e);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(userFriendlyError),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 6),
+              action: SnackBarAction(
+                label: 'Dismiss',
+                textColor: Colors.white,
+                onPressed: () {
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                },
+              ),
             ),
-          ),
-        );
+          );
+        }
       }
     } finally {
       if (mounted) {
