@@ -4,6 +4,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import '../providers/auth_provider.dart';
+import '../services/notification_service.dart';
+import '../services/draft_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -33,6 +35,17 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         await authProvider.fetchForms();
+        
+        // Initialize notification service for draft monitoring
+        final draftService = DraftService();
+        final notificationService = NotificationService();
+        if (mounted) {
+          notificationService.initialize(
+            context: context,
+            draftService: draftService,
+            authProvider: authProvider,
+          );
+        }
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

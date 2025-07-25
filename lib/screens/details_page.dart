@@ -1285,7 +1285,7 @@ class _DetailsPageState extends State<DetailsPage>
           TextButton(
             onPressed: () {
               if (_formId != null && _activityType != null) {
-                _draftService.deleteDraft(
+                _commitService.deleteCommit(
                     commit.formId, _activityType!, commit.timestamp);
                 Navigator.pop(context);
                 _loadCommits();
@@ -1639,7 +1639,7 @@ class _DetailsPageState extends State<DetailsPage>
             .whereType<Map>()
             .map((entry) => _buildCommittedRow(entry is Map<String, dynamic>
                 ? entry
-                : Map<String, dynamic>.from(entry as Map)))
+                : Map<String, dynamic>.from(entry)))
             .toList();
         break;
     }
