@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:aws_app/services/commit_service.dart';
+import 'package:aws_app/models/commit_model.dart';
 
 import 'offline_service.dart';
 import 'package:dio/dio.dart';
@@ -222,19 +223,97 @@ class ApiService {
     }
   }
 
+  Future<List<dynamic>> fetchCommittedBaselineEntriesFromApi(
+      String regionId, String formId) async {
+    try {
+      final response = await _dio.get(
+        '/entry/committed_baseline_entries',
+        queryParameters: {'region_id': regionId, 'form_id': formId},
+      );
+      if (response.statusCode == 200 && response.data['data'] != null) {
+        final entries = response.data['data'];
+        await offlineStorage.saveCommittedBaselineEntries(regionId, formId, entries);
+        return entries;
+      } else if (response.statusCode == 404) {
+        return [];
+      } else {
+        throw Exception(
+            'Failed to fetch committed baseline entries, code: ${response.statusCode}');
+      }
+    } catch (e) {
+      return [];
+    }
+  }
+
   Future<List<dynamic>> fetchCommittedBaselineEntries(
       String regionId, String formId) async {
     try {
-      if (_commitService == null) {
-        return [];
-      }
-      final entries = await _commitService!.getAllCommits(formId);
-      if (entries != null) {
-        return entries;
+      List<dynamic> allEntries = [];
+
+      print('DEBUG: Fetching committed baseline entries for formId: $formId');
+
+      // Get entries from offline storage (from API refresh)
+      final offlineEntries = await offlineStorage.getCommittedBaselineEntries(regionId, formId);
+      if (offlineEntries != null && offlineEntries.isNotEmpty) {
+        print('DEBUG: Found ${offlineEntries.length} offline entries');
+        allEntries.addAll(offlineEntries);
       } else {
-        return [];
+        print('DEBUG: No offline entries found');
       }
+
+      // Get local commits (from user commits) and add them too
+      if (_commitService != null) {
+        final localCommits = await _commitService!.getAllCommits(formId);
+        print('DEBUG: Found ${localCommits?.length ?? 0} total local commits');
+
+        if (localCommits != null && localCommits.isNotEmpty) {
+          // Filter only baseline commits that are submitted
+          final baselineCommits = localCommits.where((commit) {
+            if (commit is Map<String, dynamic>) {
+              return commit['answers']?['entity_type'] == 'baseline';
+            }
+            // Handle CommitModel objects
+            final isBaseline = commit.answers['entity_type'] == 'baseline';
+            print('DEBUG: Commit entity_type: ${commit.answers['entity_type']}, isBaseline: $isBaseline');
+            return isBaseline;
+          }).toList();
+
+          print('DEBUG: Found ${baselineCommits.length} baseline commits');
+
+          // Transform CommitModel objects to match the expected format
+          for (final commit in baselineCommits) {
+            if (commit is CommitModel) {
+              // Transform CommitModel to match API response format
+              final transformedCommit = {
+                'title': commit.title,
+                'sub_title': commit.answers['qn9']?.toString() ?? 'Unknown Area', // Assuming qn9 is village/area
+                'parish': commit.answers['qn8']?.toString() ?? 'Unknown Parish', // Assuming qn8 is parish
+                'district': commit.answers['qn4']?.toString() ?? 'Unknown District',
+                'sub_county': commit.answers['qn7']?.toString() ?? 'Unknown Sub County',
+                'village': commit.answers['qn9']?.toString() ?? 'Unknown Village',
+                'creator_id': commit.answers['creator_id']?.toString() ?? 'Unknown',
+                'response_id': 'local_${commit.timestamp.millisecondsSinceEpoch}', // Generate a unique ID
+                'form_id': commit.formId,
+                'created_at': commit.timestamp.toIso8601String(),
+                'updated_at': commit.timestamp.toIso8601String(),
+                'responses': [commit.answers], // Wrap answers in responses array to match API format
+              };
+              allEntries.add(transformedCommit);
+              print('DEBUG: Transformed local CommitModel to API format: ${transformedCommit['title']}');
+            } else {
+              // Already in the right format (Map)
+              allEntries.add(commit);
+            }
+          }
+        }
+      } else {
+        print('DEBUG: CommitService is null when fetching');
+      }
+
+      print('DEBUG: Total entries to return: ${allEntries.length}');
+      return allEntries;
     } catch (e) {
+      print('DEBUG: Error fetching committed baseline entries: $e');
       return [];
     }
   }
@@ -273,6 +352,32 @@ class ApiService {
       final url = '$baseUrl/entry/add';
       final resp = await _dio.post(url, data: formData);
       if (resp.statusCode == 200 || resp.statusCode == 201) {
+        // After successful server commit, also save locally for immediate availability
+        if (_commitService != null) {
+          try {
+            print('DEBUG: Saving baseline commit locally for formId: $formId');
+
+            // Save to local commit service so it appears immediately in Follow-up tab
+            await _commitService!.saveCommit(
+              CommitModel(
+                formId: formId,
+                title: title,
+                answers: submissionAnswers,
+                images: {}, // Empty images map for now
+                timestamp: DateTime.now(),
+                status: 'submitted'
+              ),
+              'Baseline'
+            );
+
+            print('DEBUG: Successfully saved baseline commit locally');
+          } catch (e) {
+            print('DEBUG: Failed to save baseline commit locally: $e');
+            // Local save failed, but server commit succeeded - this is acceptable
+          }
+        } else {
+          print('DEBUG: CommitService is null, cannot save locally');
+        }
         return resp.data;
       } else {
         throw Exception('Failed to commit baseline. Code: ${resp.statusCode}');

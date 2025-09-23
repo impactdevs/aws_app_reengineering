@@ -244,12 +244,16 @@ class _DetailsPageState extends State<DetailsPage>
     try {
       final auth = Provider.of<AuthProvider>(context, listen: false);
       final regionId = auth.regionId ?? '1';
+
       if (_activityType == "Baseline") {
+        // For Baseline, show entries that are already committed to the system
         _committedNewEntries = await auth.apiService
             .fetchCommittedBaselineEntries(regionId, _formId!);
-      } else {
-        _committedNewEntries =
-            await auth.apiService.fetchFollowUpEntries(regionId, _formId!);
+      } else if (_activityType == "Follow-up") {
+        // For Follow-up, show committed baseline entries that can be followed up
+        // These are entries from the server that users can create follow-ups for
+        _committedNewEntries = await auth.apiService
+            .fetchCommittedBaselineEntries(regionId, _formId!);
       }
     } catch (e) {
       if (mounted) {
@@ -258,7 +262,9 @@ class _DetailsPageState extends State<DetailsPage>
         );
       }
     } finally {
-      setState(() => _isLoadingEntries = false);
+      if (mounted) {
+        setState(() => _isLoadingEntries = false);
+      }
     }
   }
 
@@ -1073,28 +1079,20 @@ class _DetailsPageState extends State<DetailsPage>
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!_isSelectionMode)
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert),
-                    onSelected: (value) {
-                      if (value == 'edit') {
-                        _editCommit(commit);
-                      } else if (value == 'delete') {
-                        _deleteCommit(commit);
-                      }
-                    },
-                    itemBuilder: (context) => [
-                      PopupMenuItem(
-                        value: 'edit',
-                        child: Text('Edit', style: GoogleFonts.poppins()),
-                      ),
-                      PopupMenuItem(
-                        value: 'delete',
-                        child: Text('Delete',
-                            style: GoogleFonts.poppins(color: Colors.red)),
-                      ),
-                    ],
+                if (!_isSelectionMode) ...[
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.red[50],
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: IconButton(
+                      icon:
+                          const Icon(Icons.delete, size: 18, color: Colors.red),
+                      onPressed: () => _deleteCommit(commit),
+                      tooltip: 'Delete',
+                    ),
                   ),
+                ],
               ],
             ),
           ),
@@ -1257,18 +1255,6 @@ class _DetailsPageState extends State<DetailsPage>
     );
   }
 
-  void _editCommit(DraftModel commit) {
-    Navigator.pushNamed(
-      context,
-      '/form_page',
-      arguments: {
-        'form_id': commit.formId,
-        'form_title': commit.title,
-        'activity_type': _activityType,
-        'draft': commit,
-      },
-    ).then((_) => _loadDrafts());
-  }
 
   void _deleteCommit(DraftModel commit) {
     showDialog(
@@ -1639,7 +1625,7 @@ class _DetailsPageState extends State<DetailsPage>
             .whereType<Map>()
             .map((entry) => _buildCommittedRow(entry is Map<String, dynamic>
                 ? entry
-                : Map<String, dynamic>.from(entry as Map)))
+                : Map<String, dynamic>.from(entry)))
             .toList();
         break;
     }
@@ -1852,6 +1838,62 @@ class _DetailsPageState extends State<DetailsPage>
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          if (_activityType == "Follow-up")
+            IconButton(
+              icon: _isFetchingFollowUp
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      strokeWidth: 2,
+                    ),
+                  )
+                : const Icon(Icons.refresh, color: Colors.white),
+              onPressed: _isFetchingFollowUp
+                  ? null
+                  : () async {
+                      setState(() {
+                        _isFetchingFollowUp = true;
+                      });
+                      try {
+                        final auth =
+                            Provider.of<AuthProvider>(context, listen: false);
+                        final regionId = auth.regionId ?? '1';
+                        await auth.apiService
+                            .fetchCommittedBaselineEntriesFromApi(regionId, _formId!);
+                        await _loadEntries();
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Fetched baseline entries successfully!',
+                                  style: GoogleFonts.poppins()),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Failed to fetch baseline entries: $e',
+                                  style: GoogleFonts.poppins()),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      } finally {
+                        if (mounted) {
+                          setState(() {
+                            _isFetchingFollowUp = false;
+                          });
+                        }
+                      }
+                    },
+              tooltip: 'Fetch Baseline Entries',
+            ),
           if (!(_activityType == "Follow-up" && (_tabController?.index == 0)))
             IconButton(
               icon: Icon(
@@ -1961,82 +2003,13 @@ class _DetailsPageState extends State<DetailsPage>
                     'activity_type': _activityType,
                     'draft': null,
                   },
-                ).then((_) => _loadDrafts());
+                ).then((_) {
+                  _loadDrafts();
+                  _loadEntries(); // Also reload committed entries to show newly committed baseline
+                });
               },
             )
-          : FloatingActionButton(
-              tooltip: 'Fetch Follow Up Entries',
-              backgroundColor: Colors.blueAccent,
-              onPressed: _isFetchingFollowUp
-                  ? null
-                  : () async {
-                      setState(() {
-                        _isFetchingFollowUp = true;
-                      });
-                      showDialog(
-                        context: context,
-                        barrierDismissible: false,
-                        builder: (context) => AlertDialog(
-                          content: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const CircularProgressIndicator(),
-                              const SizedBox(width: 8),
-                              Text('Fetching entries',
-                                  style: GoogleFonts.poppins()),
-                            ],
-                          ),
-                        ),
-                      );
-                      try {
-                        final auth =
-                            Provider.of<AuthProvider>(context, listen: false);
-                        final regionId = auth.regionId ?? '1';
-                        await auth.apiService
-                            .fetchFollowUpEntriesFromApi(regionId, _formId!);
-                        await _loadEntries();
-                        if (mounted) {
-                          Navigator.of(context).pop(); // Close dialog
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Fetched follow up entries successfully!',
-                                  style: GoogleFonts.poppins()),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          Navigator.of(context).pop(); // Close dialog
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                  'Failed to fetch follow up entries: $e',
-                                  style: GoogleFonts.poppins()),
-                              backgroundColor: Colors.red,
-                            ),
-                          );
-                        }
-                      } finally {
-                        if (mounted) {
-                          setState(() {
-                            _isFetchingFollowUp = false;
-                          });
-                        }
-                      }
-                    },
-              child: _isFetchingFollowUp
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                        strokeWidth: 3,
-                      ),
-                    )
-                  : const Icon(Icons.refresh, color: Colors.white),
-            ),
+          : null,
     );
   }
 }

@@ -5,6 +5,7 @@ class OfflineStorageService {
   static const String _formsBox = 'forms';
   static const String _followUpEntriesBox = 'followUpEntries';
   static const String _baselineEntriesBox = 'baselineEntries';
+  static const String _committedBaselineEntriesBox = 'committedBaselineEntries';
   static const String _projectsBox = 'projects';
   static const String _organisationsBox = 'organisations';
   static const String _userRegionAreasBox = 'userRegionAreas';
@@ -101,6 +102,28 @@ class OfflineStorageService {
 
   String _baselineKey(String regionId, String formId) =>
       '$_baselineEntriesBox|$regionId|$formId';
+
+  // ================= Committed Baseline Entries Storage =================
+  Future<void> saveCommittedBaselineEntries(
+      String regionId, String formId, List<dynamic> entries) async {
+    final box = await _storage;
+    final key = _committedBaselineKey(regionId, formId);
+    await box.put(key, entries);
+  }
+
+  Future<List<dynamic>?> getCommittedBaselineEntries(
+      String regionId, String formId) async {
+    final box = await _storage;
+    final key = _committedBaselineKey(regionId, formId);
+    final data = box.get(key);
+    if (data != null) {
+      return List<dynamic>.from(data);
+    }
+    return null;
+  }
+
+  String _committedBaselineKey(String regionId, String formId) =>
+      '$_committedBaselineEntriesBox|$regionId|$formId';
 
   // ================= Projects Storage =================
   Future<void> saveProjects(List<dynamic> projects) async {

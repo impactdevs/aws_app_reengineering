@@ -534,7 +534,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
     }
 
     //push activity type to draft into answers and call it entity_type
-    _answers['entity_type'] = activityType;
+    _answers['entity_type'] = activityType.toLowerCase() == 'follow-up' ? 'followup' : 'baseline';
 
     // If we're editing an existing draft, use its timestamp; otherwise create a new one
     final timestamp = _currentDraft?.timestamp ?? DateTime.now();
@@ -679,7 +679,13 @@ class _DynamicFormPageState extends State<DynamicFormPage>
         }
       }
 
-      await _draftService.updateDraftStatus(formId, activityType, 'submitted');
+      // Only update the specific draft being submitted, not all drafts for this form
+      if (_currentDraft != null) {
+        await _draftService.updateSpecificDraftStatus(formId, activityType, _currentDraft!.timestamp, 'submitted');
+      } else {
+        // If creating new submission (not from existing draft), don't update any draft status
+        // This happens when user fills form fresh and submits directly
+      }
       if (mounted) {
         Navigator.of(context).pop();
       }
@@ -1115,7 +1121,7 @@ class _DynamicFormPageState extends State<DynamicFormPage>
             border: Border.all(color: Colors.grey),
           ),
           child: DropdownButtonFormField<String>(
-            value: currentValue,
+            initialValue: currentValue,
             hint: Text(
               'Select one',
               style: GoogleFonts.poppins(fontSize: 14, color: Colors.grey),
@@ -1597,16 +1603,6 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                                       style: GoogleFonts.poppins()),
                                   onTap: () async {
                                     Navigator.pop(context);
-                                    await _submitForm();
-                                  },
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.save_alt),
-                                  title: Text('Save and Commit',
-                                      style: GoogleFonts.poppins()),
-                                  onTap: () async {
-                                    Navigator.pop(context);
-                                    await _saveDraft();
                                     await _submitForm();
                                   },
                                 ),

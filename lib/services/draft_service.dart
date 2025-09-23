@@ -41,6 +41,16 @@ class DraftService {
     }
   }
 
+  Future<void> updateSpecificDraftStatus(
+      String formId, String activityType, DateTime timestamp, String status) async {
+    final draftKey = _createDraftKey(formId, activityType, timestamp);
+    final existingDraft = _draftsBox.get(draftKey);
+    if (existingDraft != null) {
+      final updatedDraft = existingDraft.copyWith(status: status);
+      await _draftsBox.put(draftKey, updatedDraft);
+    }
+  }
+
   Future<void> deleteDraft(
       String formId, String activityType, DateTime timestamp) async {
     final draftKey = _createDraftKey(formId, activityType, timestamp);
@@ -58,9 +68,13 @@ class DraftService {
 
   List<DraftModel> getDraftsByStatus(
       String formId, String activityType, String status) {
+    // Map activity type to entity type for proper filtering
+    String expectedEntityType = activityType.toLowerCase() == 'follow-up' ? 'followup' : 'baseline';
+
     final drafts = _draftsBox.values.where((draft) {
+      final entityType = draft.answers['entity_type'] as String?;
       return draft.formId == formId &&
-          draft.answers['entity_type'] == activityType &&
+          entityType == expectedEntityType &&
           draft.status == status;
     }).toList();
     return drafts;
