@@ -1172,33 +1172,100 @@ class _DynamicFormPageState extends State<DynamicFormPage>
                 bool serviceEnabled;
                 LocationPermission permission;
 
+                // Check if location services are enabled
                 serviceEnabled = await Geolocator.isLocationServiceEnabled();
                 if (!serviceEnabled) {
-                  // Location services are not enabled
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Location services are disabled. Please enable location services in your device settings.'),
+                      backgroundColor: Colors.orange,
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
                   return;
                 }
 
+                // Check and request permission
                 permission = await Geolocator.checkPermission();
                 if (permission == LocationPermission.denied) {
                   permission = await Geolocator.requestPermission();
                   if (permission == LocationPermission.denied) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Location permission denied. Please grant location permission to capture coordinates.'),
+                        backgroundColor: Colors.red,
+                        duration: Duration(seconds: 4),
+                      ),
+                    );
                     return;
                   }
                 }
 
+                // Handle permanently denied permissions
                 if (permission == LocationPermission.deniedForever) {
-                  // Permissions are denied forever
+                  if (!mounted) return;
+                  showDialog(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Location Permission Required'),
+                      content: const Text('Location permission has been permanently denied. Please enable it in your app settings to capture coordinates.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Geolocator.openAppSettings();
+                          },
+                          child: const Text('Open Settings'),
+                        ),
+                      ],
+                    ),
+                  );
                   return;
                 }
 
-                final position = await Geolocator.getCurrentPosition(
-                  desiredAccuracy: LocationAccuracy.high,
+                // Show loading indicator
+                if (!mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Fetching location...'),
+                    duration: Duration(seconds: 2),
+                  ),
                 );
 
-                setState(() {
-                  _answers["coordinates"] =
-                      "${position.latitude},${position.longitude}";
-                });
+                try {
+                  final position = await Geolocator.getCurrentPosition(
+                    desiredAccuracy: LocationAccuracy.high,
+                  );
+
+                  if (!mounted) return;
+                  setState(() {
+                    _answers["coordinates"] =
+                        "${position.latitude},${position.longitude}";
+                  });
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Location captured successfully!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                } catch (e) {
+                  if (!mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Failed to get location: ${e.toString()}'),
+                      backgroundColor: Colors.red,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                }
               },
       ),
     );

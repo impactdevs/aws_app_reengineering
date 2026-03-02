@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 class OfflineStorageService {
@@ -16,28 +17,51 @@ class OfflineStorageService {
 
   // init
   Future<void> init() async {
-    await Hive.initFlutter();
-    // Hive.registerAdapter(YourModelAdapter());
-    _storageFuture = Hive.openBox<dynamic>('offline_storage');
+    try {
+      debugPrint('DEBUG: Initializing OfflineStorageService...');
+      await Hive.initFlutter();
+      // Hive.registerAdapter(YourModelAdapter());
+      _storageFuture = Hive.openBox<dynamic>('offline_storage');
+      // Wait for the box to open
+      await _storageFuture!;
+      debugPrint('DEBUG: OfflineStorageService initialized successfully');
+    } catch (e) {
+      debugPrint('ERROR: Failed to initialize OfflineStorageService: $e');
+      rethrow;
+    }
   }
 
   // user  profile
   Future<void> saveUserProfile(Map<String, dynamic> profile) async {
-    final box = await _storage;
-    await box.put(_userProfileBox, profile);
+    try {
+      final box = await _storage;
+      await box.put(_userProfileBox, profile);
+      debugPrint('DEBUG: Saved user profile to offline storage');
+    } catch (e) {
+      debugPrint('ERROR: Failed to save user profile: $e');
+      rethrow;
+    }
   }
 
   Future<Map<String, dynamic>?> getUserProfile() async {
-    final box = await _storage;
-    final data = box.get(_userProfileBox);
-    if (data != null) {
-      return Map<String, dynamic>.from(data);
+    try {
+      final box = await _storage;
+      final data = box.get(_userProfileBox);
+      if (data != null) {
+        debugPrint('DEBUG: Retrieved user profile from offline storage');
+        return Map<String, dynamic>.from(data);
+      }
+      debugPrint('DEBUG: No user profile found in offline storage');
+      return null;
+    } catch (e) {
+      debugPrint('ERROR: Failed to get user profile: $e');
+      return null;
     }
-    return null;
   }
 
   Future<Box<dynamic>> get _storage async {
     if (_storageFuture == null) {
+      debugPrint('DEBUG: _storageFuture is null, initializing...');
       await Hive.initFlutter();
       _storageFuture = Hive.openBox<dynamic>('offline_storage');
     }

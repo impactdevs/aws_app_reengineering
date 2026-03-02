@@ -1,4 +1,4 @@
-import 'package:aws_app/providers/auth_provider.dart';
+import 'package:aws_adkt/providers/auth_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 

@@ -1,6 +1,6 @@
 // main.dart
-import 'package:aws_app/services/commit_service.dart';
-import 'package:aws_app/services/commit_service.dart';
+import 'package:aws_adkt/services/commit_service.dart';
+import 'package:aws_adkt/services/commit_service.dart';
 import 'services/offline_service.dart';
 import 'package:flutter/material.dart';
 import 'screens/home_page.dart';
@@ -15,8 +15,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'screens/SplashScreen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
 
   // Preload Google Fonts to handle errors gracefully
   try {

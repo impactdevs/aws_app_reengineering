@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'package:aws_app/services/offline_service.dart';
+import 'package:aws_adkt/services/offline_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/api_service.dart';
@@ -135,8 +135,30 @@ class AuthProvider extends ChangeNotifier {
     _isLoadingForms = true;
     notifyListeners();
     try {
+      debugPrint('DEBUG: AuthProvider.fetchForms() - Starting forms fetch...');
+      
+      // First, try to get forms from offline storage
       _forms = await _apiService.fetchForms();
+      debugPrint('DEBUG: AuthProvider.fetchForms() - Got ${_forms.length} forms from offline storage');
+      
+      // If offline storage is empty, fetch from API directly
+      if (_forms.isEmpty) {
+        debugPrint('DEBUG: AuthProvider.fetchForms() - Offline storage is empty, fetching from API...');
+        try {
+          _forms = await _apiService.fetchFormsFromApi();
+          debugPrint('DEBUG: AuthProvider.fetchForms() - Successfully fetched ${_forms.length} forms from API');
+        } catch (apiError) {
+          debugPrint('ERROR: AuthProvider.fetchForms() - Failed to fetch from API: $apiError');
+          // If API fails, we have no forms to display
+          _forms = [];
+          throw Exception('Failed to fetch forms from API: $apiError');
+        }
+      }
+      
+      debugPrint('DEBUG: AuthProvider.fetchForms() - Completed with ${_forms.length} forms');
     } catch (e) {
+      debugPrint('ERROR: AuthProvider.fetchForms() - Failed to fetch forms: $e');
+      _forms = [];
       throw Exception('Failed to fetch forms: $e');
     } finally {
       _isLoadingForms = false;

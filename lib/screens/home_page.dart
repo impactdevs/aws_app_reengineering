@@ -1,4 +1,4 @@
-import 'package:aws_app/screens/auth/login_screen.dart';
+import 'package:aws_adkt/screens/auth/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -33,10 +33,21 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       try {
         final authProvider = Provider.of<AuthProvider>(context, listen: false);
         await authProvider.fetchForms();
+        
+        // Retry once if forms are still empty
+        if (authProvider.forms.isEmpty) {
+          debugPrint('DEBUG: Forms are empty after first attempt, retrying...');
+          await Future.delayed(const Duration(seconds: 1));
+          await authProvider.fetchForms();
+        }
       } catch (e) {
         if (mounted) {
+          debugPrint('ERROR: Failed to fetch forms: $e');
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to fetch forms: $e')),
+            SnackBar(
+              content: Text('Failed to fetch forms: $e'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
       }

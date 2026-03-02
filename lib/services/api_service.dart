@@ -1,6 +1,7 @@
 import 'dart:convert';
-import 'package:aws_app/services/commit_service.dart';
-import 'package:aws_app/models/commit_model.dart';
+import 'package:flutter/material.dart';
+import 'package:aws_adkt/services/commit_service.dart';
+import 'package:aws_adkt/models/commit_model.dart';
 
 import 'offline_service.dart';
 import 'package:dio/dio.dart';
@@ -41,32 +42,80 @@ class ApiService {
 
         await offlineStorage.saveUserProfile(profile);
 
-        // Fetch all data in parallel for better performance
+        // Fetch all data in parallel for better performance (non-blocking)
         final userId = profile['data']['user_id'].toString();
         final regionId = profile['data']['region_id'].toString();
 
-        // Fetch forms, projects, organizations, and user region areas in parallel
-        await Future.wait([
-          fetchFormsFromApi(),
-          fetchProjectsFromApi(),
-          fetchOrganisationsFromApi(),
-          fetchUserRegionAreasFromApi(userId),
-        ]);
+        // Start background data fetching without blocking login
+        Future(() async {
+          try {
+            debugPrint('INFO: Starting background data sync...');
+            
+            // Fetch forms independently
+            try {
+              debugPrint('INFO: Fetching forms...');
+              await fetchFormsFromApi();
+              debugPrint('INFO: Forms fetched successfully');
+            } catch (e) {
+              debugPrint('WARN: Failed to fetch forms: $e');
+            }
 
-        // Fetch form-specific data in parallel
-        final forms = await fetchForms();
+            // Fetch projects independently
+            try {
+              debugPrint('INFO: Fetching projects...');
+              await fetchProjectsFromApi();
+              debugPrint('INFO: Projects fetched successfully');
+            } catch (e) {
+              debugPrint('WARN: Failed to fetch projects: $e');
+            }
 
-        if (forms.isNotEmpty) {
-          final formDataFutures = forms.map((form) async {
-            final formId = form['form_id'].toString();
-            await Future.wait([
-              fetchFollowUpEntriesFromApi(regionId, formId),
-              fetchCommittedBaselineEntries(regionId, formId),
-            ]);
-          }).toList();
+            // Fetch organisations independently
+            try {
+              debugPrint('INFO: Fetching organisations...');
+              await fetchOrganisationsFromApi();
+              debugPrint('INFO: Organisations fetched successfully');
+            } catch (e) {
+              debugPrint('WARN: Failed to fetch organisations: $e');
+            }
 
-          await Future.wait(formDataFutures);
-        }
+            // Fetch user region areas independently
+            try {
+              debugPrint('INFO: Fetching user region areas for userId: $userId');
+              await fetchUserRegionAreasFromApi(userId);
+              debugPrint('INFO: User region areas fetched successfully');
+            } catch (e) {
+              debugPrint('WARN: Failed to fetch user region areas: $e');
+            }
+
+            // Fetch form-specific data in parallel
+            try {
+              final forms = await fetchForms();
+              debugPrint('INFO: Retrieved ${forms.length} forms from storage');
+
+              if (forms.isNotEmpty) {
+                final formDataFutures = forms.map((form) async {
+                  try {
+                    final formId = form['form_id'].toString();
+                    await Future.wait([
+                      fetchFollowUpEntriesFromApi(regionId, formId),
+                      fetchCommittedBaselineEntries(regionId, formId),
+                    ], eagerError: false);
+                  } catch (e) {
+                    debugPrint('WARN: Failed to fetch form-specific data: $e');
+                  }
+                }).toList();
+
+                await Future.wait(formDataFutures, eagerError: false);
+              }
+            } catch (e) {
+              debugPrint('WARN: Failed to fetch form-specific data: $e');
+            }
+            
+            debugPrint('INFO: Background data sync completed');
+          } catch (e) {
+            debugPrint('ERROR: Unexpected error during background data sync: $e');
+          }
+        }).ignore();
 
         return response.data;
       } else {
@@ -157,16 +206,35 @@ class ApiService {
 
   Future<List<dynamic>> fetchFormsFromApi() async {
     try {
+      debugPrint('DEBUG: Fetching forms from API endpoint /forms...');
       final response =
           await _dio.get('/forms', queryParameters: {'published': 1});
+      
+      debugPrint('DEBUG: API response status code: ${response.statusCode}');
+      
       if (response.statusCode == 200 && response.data['data'] != null) {
         final forms = response.data['data'];
-        await offlineStorage.saveForms(forms);
+        debugPrint('DEBUG: Retrieved ${forms.length} forms from API, saving to offline storage...');
+        
+        try {
+          await offlineStorage.saveForms(forms);
+          debugPrint('DEBUG: Successfully saved ${forms.length} forms to offline storage');
+        } catch (e) {
+          debugPrint('WARN: Failed to save forms to offline storage: $e');
+        }
+        
         return forms;
       } else {
-        throw Exception('Failed to fetch forms, code: ${response.statusCode}');
+        final errorMsg = 'Failed to fetch forms, code: ${response.statusCode}, data: ${response.data}';
+        debugPrint('ERROR: $errorMsg');
+        throw Exception(errorMsg);
       }
+    } on DioException catch (e) {
+      final errorMsg = 'DioException while fetching forms: ${e.message}, type: ${e.type}, status: ${e.response?.statusCode}';
+      debugPrint('ERROR: $errorMsg');
+      rethrow;
     } catch (e) {
+      debugPrint('ERROR: Unexpected error fetching forms: $e');
       rethrow;
     }
   }
@@ -174,14 +242,18 @@ class ApiService {
   //offline forms
   Future<List<dynamic>> fetchForms() async {
     try {
+      debugPrint('DEBUG: Attempting to fetch forms from offline storage...');
       final forms = await offlineStorage.getForms();
       
-      if (forms != null) {
+      if (forms != null && forms.isNotEmpty) {
+        debugPrint('DEBUG: Successfully retrieved ${forms.length} forms from offline storage');
         return forms;
       } else {
+        debugPrint('DEBUG: Offline storage returned null or empty for forms');
         return [];
       }
     } catch (e) {
+      debugPrint('ERROR: Failed to fetch forms from offline storage: $e');
       return [];
     }
   }
@@ -459,58 +531,106 @@ class ApiService {
 
   Future<List<dynamic>> fetchProjectsFromApi() async {
     try {
+      debugPrint('DEBUG: Fetching projects from API endpoint /projects...');
       final response = await _dio.get('/projects');
+      
+      debugPrint('DEBUG: API response status code: ${response.statusCode}');
+      
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final projects = response.data['data'];
-        await offlineStorage.saveProjects(projects);
+        final projects = response.data['data'] ?? [];
+        debugPrint('DEBUG: Retrieved ${projects.length} projects from API, saving to offline storage...');
+        
+        try {
+          await offlineStorage.saveProjects(projects);
+          debugPrint('DEBUG: Successfully saved ${projects.length} projects to offline storage');
+        } catch (e) {
+          debugPrint('WARN: Failed to save projects to offline storage: $e');
+        }
+        
         return projects;
       } else {
-        throw Exception('Failed to fetch projects');
+        final errorMsg = 'Failed to fetch projects, code: ${response.statusCode}';
+        debugPrint('ERROR: $errorMsg');
+        throw Exception(errorMsg);
       }
+    } on DioException catch (e) {
+      final errorMsg = 'DioException while fetching projects: ${e.message}, status: ${e.response?.statusCode}';
+      debugPrint('ERROR: $errorMsg');
+      rethrow;
     } catch (e) {
-      throw Exception('Error fetching projects: $e');
+      debugPrint('ERROR: Unexpected error fetching projects: $e');
+      rethrow;
     }
   }
 
   //offline
   Future<List<dynamic>> fetchProjects() async {
     try {
+      debugPrint('DEBUG: Attempting to fetch projects from offline storage...');
       final projects = await offlineStorage.getProjects();
-      if (projects != null) {
+      
+      if (projects != null && projects.isNotEmpty) {
+        debugPrint('DEBUG: Successfully retrieved ${projects.length} projects from offline storage');
         return projects;
       } else {
+        debugPrint('DEBUG: Offline storage returned null or empty for projects');
         return [];
       }
     } catch (e) {
+      debugPrint('ERROR: Failed to fetch projects from offline storage: $e');
       return [];
     }
   }
 
   Future<List<dynamic>> fetchOrganisationsFromApi() async {
     try {
+      debugPrint('DEBUG: Fetching organisations from API endpoint /organisations...');
       final response = await _dio.get('/organisations');
+      
+      debugPrint('DEBUG: API response status code: ${response.statusCode}');
+      
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final organisations = response.data['data'];
-        await offlineStorage.saveOrganisations(organisations);
+        final organisations = response.data['data'] ?? [];
+        debugPrint('DEBUG: Retrieved ${organisations.length} organisations from API, saving to offline storage...');
+        
+        try {
+          await offlineStorage.saveOrganisations(organisations);
+          debugPrint('DEBUG: Successfully saved ${organisations.length} organisations to offline storage');
+        } catch (e) {
+          debugPrint('WARN: Failed to save organisations to offline storage: $e');
+        }
+        
         return organisations;
       } else {
-        throw Exception('Failed to fetch organisations');
+        final errorMsg = 'Failed to fetch organisations, code: ${response.statusCode}';
+        debugPrint('ERROR: $errorMsg');
+        throw Exception(errorMsg);
       }
+    } on DioException catch (e) {
+      final errorMsg = 'DioException while fetching organisations: ${e.message}, status: ${e.response?.statusCode}';
+      debugPrint('ERROR: $errorMsg');
+      rethrow;
     } catch (e) {
-      throw Exception('Error fetching organisations: $e');
+      debugPrint('ERROR: Unexpected error fetching organisations: $e');
+      rethrow;
     }
   }
 
   //offline
   Future<List<dynamic>> fetchOrganisations() async {
     try {
+      debugPrint('DEBUG: Attempting to fetch organisations from offline storage...');
       final organisations = await offlineStorage.getOrganisations();
-      if (organisations != null) {
+      
+      if (organisations != null && organisations.isNotEmpty) {
+        debugPrint('DEBUG: Successfully retrieved ${organisations.length} organisations from offline storage');
         return organisations;
       } else {
+        debugPrint('DEBUG: Offline storage returned null or empty for organisations');
         return [];
       }
     } catch (e) {
+      debugPrint('ERROR: Failed to fetch organisations from offline storage: $e');
       return [];
     }
   }
@@ -518,30 +638,54 @@ class ApiService {
   Future<Map<String, dynamic>> fetchUserRegionAreasFromApi(
       String userId) async {
     try {
+      debugPrint('DEBUG: Fetching user region areas from API endpoint /user-region-areas (userId: $userId)...');
       final response = await _dio
           .get('/user-region-areas', queryParameters: {'user_id': userId});
+      
+      debugPrint('DEBUG: API response status code: ${response.statusCode}');
+      
       if (response.statusCode == 200) {
-        final areas = response.data['data'];
-        await offlineStorage.saveUserRegionAreas(userId, areas);
+        final areas = response.data['data'] ?? {};
+        debugPrint('DEBUG: Retrieved user region areas from API, saving to offline storage...');
+        
+        try {
+          await offlineStorage.saveUserRegionAreas(userId, areas);
+          debugPrint('DEBUG: Successfully saved user region areas to offline storage');
+        } catch (e) {
+          debugPrint('WARN: Failed to save user region areas to offline storage: $e');
+        }
+        
         return areas;
       } else {
-        throw Exception('Failed to fetch user region areas');
+        final errorMsg = 'Failed to fetch user region areas, code: ${response.statusCode}';
+        debugPrint('ERROR: $errorMsg');
+        throw Exception(errorMsg);
       }
+    } on DioException catch (e) {
+      final errorMsg = 'DioException while fetching user region areas: ${e.message}, status: ${e.response?.statusCode}';
+      debugPrint('ERROR: $errorMsg');
+      rethrow;
     } catch (e) {
-      throw Exception('Error fetching user region areas: $e');
+      debugPrint('ERROR: Unexpected error fetching user region areas: $e');
+      rethrow;
     }
   }
 
   //fetch offline user region areas
   Future<Map<String, dynamic>> fetchUserRegionAreas(String userId) async {
     try {
+      debugPrint('DEBUG: Attempting to fetch user region areas from offline storage (userId: $userId)...');
       final areas = await offlineStorage.getUserRegionAreas(userId);
-      if (areas != null) {
+      
+      if (areas != null && areas.isNotEmpty) {
+        debugPrint('DEBUG: Successfully retrieved user region areas from offline storage');
         return areas;
       } else {
+        debugPrint('DEBUG: Offline storage returned null or empty for user region areas');
         return {};
       }
     } catch (e) {
+      debugPrint('ERROR: Failed to fetch user region areas from offline storage: $e');
       return {};
     }
   }

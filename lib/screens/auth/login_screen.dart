@@ -1,7 +1,8 @@
-import 'package:aws_app/screens/home_page.dart';
+import 'package:aws_adkt/screens/home_page.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../utils/error_handler.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class LoginPage extends StatefulWidget {
@@ -64,11 +65,11 @@ class _LoginPageState extends State<LoginPage> {
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-    // try {
-    await authProvider.login(
-      _emailController.text.trim(),
-      _passwordController.text,
-    );
+    try {
+      await authProvider.login(
+        _emailController.text.trim(),
+        _passwordController.text,
+      );
 
     // Ensure user is loaded from storage/provider
     //await authProvider.loadUser();
@@ -82,16 +83,16 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // Fetch region data for user
-    try {
-      await authProvider.loadUserRegionData(
-        authProvider.user!['user_id'],
-      );
-    } catch (e) {
-      setState(() {
-        _errorMessage = 'Login succeeded, but failed to load user region data.';
-      });
-      return;
+    // Fetch region data for user (non-blocking, use cached data if available)
+    if (authProvider.user != null) {
+      try {
+        await authProvider.loadUserRegionData(
+          authProvider.user!['user_id'],
+        );
+      } catch (e) {
+        // Don't fail login - region data will be loaded in background or from cache
+        debugPrint('WARN: Failed to preload user region data during login: $e');
+      }
     }
 
     // Check if widget is still mounted before showing SnackBar or navigating
@@ -108,38 +109,38 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.pushReplacement(
         context, MaterialPageRoute(builder: (context) => const HomePage()));
 
-    // } catch (e) {
-    //   if (!mounted) return;
+    } catch (e) {
+      if (!mounted) return;
 
-    //   _retryCount++;
-    //   final userFriendlyError = ErrorHandler.getLoginErrorMessage(e);
-    //   setState(() {
-    //     _errorMessage = userFriendlyError;
-    //   });
+      _retryCount++;
+      final userFriendlyError = ErrorHandler.getLoginErrorMessage(e);
+      setState(() {
+        _errorMessage = userFriendlyError;
+      });
 
-    //   // Show different messages based on retry count
-    //   String snackBarMessage = userFriendlyError;
-    //   if (_retryCount >= maxRetries) {
-    //     snackBarMessage =
-    //         '$userFriendlyError\n\nYou can try again or contact support if the problem persists.';
-    //   }
+      // Show different messages based on retry count
+      String snackBarMessage = userFriendlyError;
+      if (_retryCount >= maxRetries) {
+        snackBarMessage =
+            '$userFriendlyError\n\nYou can try again or contact support if the problem persists.';
+      }
 
-    //   // Also show as snackbar for immediate feedback
-    //   ScaffoldMessenger.of(context).showSnackBar(
-    //     SnackBar(
-    //       content: Text(snackBarMessage),
-    //       backgroundColor: Colors.red,
-    //       duration: const Duration(seconds: 4),
-    //       action: SnackBarAction(
-    //         label: 'Dismiss',
-    //         textColor: Colors.white,
-    //         onPressed: () {
-    //           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-    //         },
-    //       ),
-    //     ),
-    //   );
-    // }
+      // Also show as snackbar for immediate feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(snackBarMessage),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 4),
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
+        ),
+      );
+    }
   }
 
   @override

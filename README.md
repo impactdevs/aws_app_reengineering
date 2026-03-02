@@ -1,4 +1,4 @@
-# aws_app
+# AWS ADKT
 
 A new Flutter project.
 

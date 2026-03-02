@@ -1,6 +1,6 @@
 import 'dart:developer';
 
-import 'package:aws_app/services/commit_service.dart';
+import 'package:aws_adkt/services/commit_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -1669,8 +1669,9 @@ class _DetailsPageState extends State<DetailsPage>
         // Data table
         Expanded(
           child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Container(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Container(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(8),
                 boxShadow: [
@@ -1710,6 +1711,7 @@ class _DetailsPageState extends State<DetailsPage>
                 sortAscending: ascending,
               ),
             ),
+          ),
           ),
         ),
       ],
